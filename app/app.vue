@@ -755,7 +755,10 @@ onBeforeUnmount(() => {
         <h1>{{ modeTitle }}</h1>
         <p class="mode-hint">{{ modeHint }}</p>
 
-        <div class="timer-shell pixel-frame">
+        <div
+          class="timer-shell pixel-frame"
+          :class="{ 'timer-complete': history[0]?.sessionType === 'focus' && mode === 'break' && !running }"
+        >
           <p class="timer-display">{{ mmss }}</p>
           <div class="timer-track pixel-frame-inset">
             <div
@@ -815,15 +818,15 @@ onBeforeUnmount(() => {
         <div class="stats-ribbon">
           <div class="stat-card pixel-frame">
             <span class="label">TOTAL</span>
-            <strong>{{ garden.totalSessions }}</strong>
+            <strong :key="`total-${garden.totalSessions}`">{{ garden.totalSessions }}</strong>
           </div>
           <div class="stat-card pixel-frame">
             <span class="label">TODAY</span>
-            <strong>{{ garden.sessionsToday }}</strong>
+            <strong :key="`today-${garden.sessionsToday}`">{{ garden.sessionsToday }}</strong>
           </div>
           <div class="stat-card pixel-frame">
             <span class="label">STREAK</span>
-            <strong>{{ garden.streakDays }}</strong>
+            <strong :key="`streak-${garden.streakDays}`">{{ garden.streakDays }}</strong>
           </div>
         </div>
 
@@ -837,7 +840,13 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div class="garden-canvas pixel-frame">
+        <div
+          class="garden-canvas pixel-frame"
+          :class="{
+            'session-boom': history[0]?.sessionType === 'focus' && mode === 'break' && !running,
+            'growth-glow': showSparkle,
+          }"
+        >
           <div class="sky" />
           <div class="sun-glow" />
           <div class="sun" />
@@ -848,8 +857,40 @@ onBeforeUnmount(() => {
           <div class="birds">
             <span v-for="i in 7" :key="`b-${i}`" class="bird" :style="{ left: `${12 + i * 11}%`, top: `${10 + (i * 7) % 22}%`, animationDelay: `${i * 0.4}s` }" />
           </div>
+          <div class="butterflies">
+            <span v-for="i in 4" :key="`butterfly-${i}`" class="butterfly" :style="{ animationDelay: `${i * 4.8}s` }" />
+          </div>
           <div class="horizon" />
           <div class="ground" />
+          <div class="path" />
+          <div class="fence">
+            <span v-for="i in 10" :key="`fence-${i}`" class="fence-post" :style="{ left: `${4 + i * 10}%` }" />
+          </div>
+          <div class="grass-layer">
+            <span v-for="i in 28" :key="`grass-${i}`" class="grass-tuft" :style="{ left: `${(i * 9 + 7) % 100}%`, animationDelay: `${i * 0.08}s` }" />
+          </div>
+
+          <div
+            class="pixel-cat"
+            :class="{
+              sleepy: mode === 'break',
+              happy: history[0]?.sessionType === 'focus' && mode === 'break' && !running,
+            }"
+          >
+            <div class="cat-shadow" />
+            <div class="cat-tail" />
+            <div class="cat-body">
+              <div class="cat-ear ear-left" />
+              <div class="cat-ear ear-right" />
+              <div class="cat-face">
+                <span class="cat-eye eye-left" />
+                <span class="cat-eye eye-right" />
+                <span class="cat-mouth" />
+              </div>
+              <div class="cat-paw paw-left" />
+              <div class="cat-paw paw-right" />
+            </div>
+          </div>
 
           <div v-if="garden.totalSessions === 0" class="empty-garden pixel-frame">
             <p>PRESS START TO PLANT YOUR FIRST SPROUT.</p>
@@ -863,24 +904,45 @@ onBeforeUnmount(() => {
               :class="{ fresh: newlyPlanted.includes(plant.id) }"
               :style="plant.style"
             >
-              <div class="stem" :style="{ '--hue': plant.hue }" />
-              <div class="leaf leaf-left" :style="{ '--hue': plant.hue }" />
-              <div class="leaf leaf-right" :style="{ '--hue': plant.hue }" />
-              <div class="flower-core" />
-              <div class="petal p1" :style="{ '--hue': plant.hue }" />
-              <div class="petal p2" :style="{ '--hue': plant.hue }" />
-              <div class="petal p3" :style="{ '--hue': plant.hue }" />
-              <div class="petal p4" :style="{ '--hue': plant.hue }" />
+              <div class="plant-body">
+                <div class="stem" :style="{ '--hue': plant.hue }" />
+                <div class="leaf leaf-left" :style="{ '--hue': plant.hue }" />
+                <div class="leaf leaf-right" :style="{ '--hue': plant.hue }" />
+                <div class="flower-core" />
+                <div class="petal p1" :style="{ '--hue': plant.hue }" />
+                <div class="petal p2" :style="{ '--hue': plant.hue }" />
+                <div class="petal p3" :style="{ '--hue': plant.hue }" />
+                <div class="petal p4" :style="{ '--hue': plant.hue }" />
+              </div>
             </div>
           </template>
+
+          <div
+            v-if="history.length > 0"
+            :key="`confetti-${history[0].id}`"
+            class="confetti-overlay"
+            :class="{ show: history[0].sessionType === 'focus' }"
+          >
+            <span
+              v-for="i in 34"
+              :key="`c-${i}`"
+              class="confetti-piece"
+              :style="{
+                left: `${48 + ((i % 2 === 0 ? -1 : 1) * ((i * 7) % 44))}%`,
+                top: `${48 + ((i * 3) % 16)}%`,
+                '--drift': `${(i * 9) % 72}`,
+                animationDelay: `${i * 0.018}s`,
+              }"
+            />
+          </div>
 
           <transition name="sparkle">
             <div v-if="showSparkle" class="sparkle-overlay">
               <span
-                v-for="i in 24"
+                v-for="i in 52"
                 :key="`p-${i}`"
                 class="spark"
-                :style="{ left: `${(i * 17 + 12) % 100}%`, top: `${20 + (i * 11) % 56}%`, animationDelay: `${i * 0.04}s` }"
+                :style="{ left: `${(i * 19 + 12) % 100}%`, top: `${16 + (i * 13) % 62}%`, animationDelay: `${i * 0.016}s` }"
               />
             </div>
           </transition>
@@ -1144,14 +1206,16 @@ h1 {
   text-transform: uppercase;
   cursor: pointer;
   box-shadow: 2px 2px 0 var(--warm-dark);
+  transition: transform 0.12s steps(2), box-shadow 0.12s steps(2), filter 0.12s steps(2);
 }
 
 .pixel-btn:hover {
   background: linear-gradient(180deg, #ffa3b2 0%, #ff6b6b 100%);
+  filter: saturate(1.08);
 }
 
 .pixel-btn:active {
-  transform: translate(1px, 1px);
+  transform: translate(1px, 1px) scale(0.92, 0.82);
   box-shadow: 1px 1px 0 var(--warm-dark);
 }
 
@@ -1171,6 +1235,19 @@ h1 {
 .timer-shell {
   margin-top: 8px;
   padding: 12px;
+  position: relative;
+}
+
+.timer-shell::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.timer-shell.timer-complete::after {
+  animation: timer-flash 0.65s steps(5);
 }
 
 .timer-display {
@@ -1194,6 +1271,19 @@ h1 {
 .progress-fill {
   height: 100%;
   background: repeating-linear-gradient(90deg, var(--gold) 0 8px, #ff8fa3 8px 16px);
+  position: relative;
+  overflow: hidden;
+}
+
+.timer-fill::after,
+.progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 30%;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.68) 50%, transparent 100%);
+  animation: shine 2.6s steps(20) infinite;
 }
 
 .inputs,
@@ -1248,6 +1338,8 @@ select {
   font-family: 'Press Start 2P', monospace;
   font-size: 16px;
   color: var(--warm-dark);
+  display: inline-block;
+  animation: stat-pop 0.38s steps(3);
 }
 
 .progress-head {
@@ -1263,6 +1355,33 @@ select {
   position: relative;
   overflow: hidden;
   background: #ffba8a;
+  transform-origin: center;
+}
+
+.garden-canvas::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 23% 68%, rgba(255, 236, 159, 0.12) 0%, transparent 26%),
+    radial-gradient(circle at 76% 64%, rgba(255, 236, 159, 0.09) 0%, transparent 28%);
+}
+
+.garden-canvas::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.garden-canvas.growth-glow::after {
+  animation: growth-pulse 1.2s steps(8) 1;
+}
+
+.garden-canvas.session-boom {
+  animation: screen-shake 0.52s steps(5) 1;
 }
 
 .sky,
@@ -1325,8 +1444,20 @@ select {
 .ground {
   bottom: 0;
   height: 35%;
-  background: repeating-linear-gradient(90deg, var(--green-1) 0 16px, var(--green-0) 16px 32px);
+  background:
+    linear-gradient(180deg, rgba(157, 250, 185, 0.6) 0%, rgba(74, 222, 128, 0) 32%),
+    repeating-linear-gradient(90deg, var(--green-1) 0 16px, var(--green-0) 16px 32px);
   border-top: 3px solid var(--green-2);
+}
+
+.ground::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to right, rgba(16, 99, 61, 0.2) 0 2px, transparent 2px 12px),
+    linear-gradient(to bottom, rgba(16, 99, 61, 0.15) 0 2px, transparent 2px 10px);
+  opacity: 0.3;
 }
 
 .cloud {
@@ -1375,12 +1506,217 @@ select {
 
 .bird {
   position: absolute;
-  width: 10px;
-  height: 4px;
-  border-top: 2px solid var(--warm-dark);
+  width: 14px;
+  height: 6px;
+  border-top: 2px solid #4f4367;
+  filter: drop-shadow(0 1px 0 rgba(255, 245, 219, 0.6));
   border-radius: 50%;
   transform: scaleX(1.15);
-  animation: glide 6s steps(20) infinite;
+  animation: glide 4.8s steps(24) infinite;
+}
+
+.butterflies {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.butterfly {
+  position: absolute;
+  left: -9%;
+  top: 44%;
+  width: 10px;
+  height: 8px;
+  background:
+    linear-gradient(90deg, #ffe580 0 44%, #ff8fa3 44% 56%, #ffe580 56% 100%);
+  box-shadow: 0 0 0 2px #e85d75;
+  transform-origin: center;
+  animation: butterfly-fly 13s steps(80) infinite;
+}
+
+.butterfly::before,
+.butterfly::after {
+  content: '';
+  position: absolute;
+  width: 4px;
+  height: 2px;
+  background: #ffefc2;
+  top: -2px;
+}
+
+.butterfly::before { left: 0; }
+.butterfly::after { right: 0; }
+
+.path {
+  position: absolute;
+  left: 40%;
+  bottom: 0;
+  width: 18%;
+  height: 26%;
+  background:
+    linear-gradient(to right, rgba(93, 73, 42, 0.24) 0 2px, transparent 2px 9px),
+    repeating-linear-gradient(180deg, #e6b980 0 8px, #cf995d 8px 16px);
+  box-shadow: inset 2px 0 0 rgba(255, 240, 210, 0.25), inset -2px 0 0 rgba(93, 73, 42, 0.24);
+}
+
+.fence {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 28%;
+  height: 24px;
+  pointer-events: none;
+}
+
+.fence::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 13px;
+  height: 4px;
+  background: #c9894a;
+  box-shadow: 0 3px 0 #8f5e31;
+}
+
+.fence-post {
+  position: absolute;
+  top: 1px;
+  width: 6px;
+  height: 20px;
+  background: #d59f63;
+  border-top: 2px solid #f7d2a6;
+  box-shadow: 2px 2px 0 #8f5e31;
+}
+
+.grass-layer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 28%;
+  height: 32px;
+  pointer-events: none;
+}
+
+.grass-tuft {
+  position: absolute;
+  bottom: 0;
+  width: 7px;
+  height: 12px;
+  background: linear-gradient(180deg, #9ef08f 0%, #3ab15f 100%);
+  clip-path: polygon(50% 0%, 0% 100%, 30% 70%, 50% 100%, 70% 70%, 100% 100%);
+  animation: grass-dance 3.2s steps(3) infinite;
+}
+
+.pixel-cat {
+  position: absolute;
+  right: 16%;
+  bottom: 29%;
+  width: 40px;
+  height: 34px;
+  z-index: 4;
+  transform-origin: bottom center;
+  animation: cat-stretch 7.8s steps(10) infinite;
+}
+
+.cat-shadow {
+  position: absolute;
+  left: 8px;
+  bottom: 0;
+  width: 26px;
+  height: 6px;
+  background: rgba(45, 42, 74, 0.35);
+}
+
+.cat-tail {
+  position: absolute;
+  left: 28px;
+  bottom: 10px;
+  width: 14px;
+  height: 8px;
+  border-top: 4px solid #6f5678;
+  border-right: 2px solid #6f5678;
+  transform-origin: left bottom;
+  animation: tail-wiggle 2.2s steps(4) infinite;
+}
+
+.cat-body {
+  position: absolute;
+  left: 6px;
+  bottom: 4px;
+  width: 24px;
+  height: 20px;
+  background: #c6a18b;
+  box-shadow: inset 2px 2px 0 rgba(255, 234, 213, 0.55), 2px 2px 0 #6f5678;
+}
+
+.cat-ear {
+  position: absolute;
+  top: -6px;
+  width: 8px;
+  height: 8px;
+  background: #b88d74;
+}
+
+.ear-left { left: 0; clip-path: polygon(0 100%, 100% 100%, 0 0); }
+.ear-right { right: 0; clip-path: polygon(0 100%, 100% 100%, 100% 0); }
+
+.cat-face {
+  position: absolute;
+  left: 4px;
+  top: 6px;
+  width: 16px;
+  height: 10px;
+}
+
+.cat-eye {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  background: #2d2a4a;
+  animation: cat-blink 4s steps(2) infinite;
+}
+
+.eye-left { left: 1px; }
+.eye-right { right: 1px; }
+
+.cat-mouth {
+  position: absolute;
+  left: 6px;
+  top: 5px;
+  width: 4px;
+  height: 2px;
+  border-bottom: 2px solid #7d4f43;
+}
+
+.cat-paw {
+  position: absolute;
+  bottom: -4px;
+  width: 7px;
+  height: 5px;
+  background: #a97e69;
+}
+
+.paw-left { left: 3px; }
+.paw-right { right: 3px; }
+
+.pixel-cat.sleepy .cat-eye {
+  height: 1px;
+  top: 1px;
+  animation: none;
+}
+
+.pixel-cat.sleepy .cat-mouth {
+  border-bottom-color: #9a6a5e;
+}
+
+.pixel-cat.happy {
+  animation: cat-jump 0.75s steps(5) 1;
+}
+
+.pixel-cat.happy .cat-mouth {
+  border-bottom-color: #ffef99;
+  border-bottom-width: 3px;
 }
 
 .empty-garden {
@@ -1401,6 +1737,22 @@ select {
   width: 22px;
   height: 48px;
   transform-origin: bottom center;
+}
+
+.plant-body {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-origin: bottom center;
+  animation: sway 3.4s steps(4) infinite;
+}
+
+.plant:nth-child(odd) .plant-body {
+  animation-duration: 4.1s;
+}
+
+.plant:nth-child(3n) .plant-body {
+  animation-duration: 2.9s;
 }
 
 .stem {
@@ -1451,20 +1803,57 @@ select {
 
 .fresh {
   animation: pop 0.45s steps(4) 3;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 190, 0.85));
+}
+
+.fresh .plant-body {
+  animation: new-plant-glow 1.15s steps(6) 2, sway 3.2s steps(4) infinite;
 }
 
 .sparkle-overlay {
   position: absolute;
   inset: 0;
   pointer-events: none;
+  z-index: 6;
 }
 
 .spark {
   position: absolute;
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   background: #ffef99;
-  animation: spark 0.8s steps(3) forwards;
+  box-shadow: 0 0 0 2px rgba(255, 239, 153, 0.5);
+  animation: spark 0.95s steps(4) forwards;
+}
+
+.confetti-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 7;
+}
+
+.confetti-overlay.show .confetti-piece {
+  animation: confetti 1.25s steps(14) forwards;
+}
+
+.confetti-piece {
+  position: absolute;
+  width: 5px;
+  height: 9px;
+  background: #fff5db;
+}
+
+.confetti-piece:nth-child(4n) {
+  background: #ff8fa3;
+}
+
+.confetti-piece:nth-child(4n + 1) {
+  background: #ffd93d;
+}
+
+.confetti-piece:nth-child(4n + 2) {
+  background: #86efac;
 }
 
 .activity-tabs {
@@ -1591,8 +1980,8 @@ select {
 }
 
 @keyframes glide {
-  0%, 100% { transform: translateY(0) scaleX(1.15); opacity: 0.7; }
-  50% { transform: translateY(-2px) scaleX(1.15); opacity: 1; }
+  0%, 100% { transform: translateY(0) scaleX(1.15); opacity: 0.78; }
+  50% { transform: translateY(-3px) scaleX(1.15); opacity: 1; }
 }
 
 @keyframes pop {
@@ -1602,13 +1991,97 @@ select {
 
 @keyframes spark {
   0% { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: translateY(-12px) scale(0); }
+  100% { opacity: 0; transform: translateY(-20px) scale(0); }
 }
 
 @keyframes drift {
   0% { transform: translateX(0); }
   50% { transform: translateX(14px); }
   100% { transform: translateX(0); }
+}
+
+@keyframes shine {
+  0% { transform: translateX(-130%); }
+  100% { transform: translateX(420%); }
+}
+
+@keyframes timer-flash {
+  0% { opacity: 0.95; background: rgba(255, 255, 224, 0.7); }
+  100% { opacity: 0; background: rgba(255, 255, 224, 0); }
+}
+
+@keyframes stat-pop {
+  0% { transform: scale(0.8); }
+  70% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+
+@keyframes sway {
+  0%, 100% { transform: rotate(-2deg); }
+  50% { transform: rotate(3deg); }
+}
+
+@keyframes new-plant-glow {
+  0% { filter: drop-shadow(0 0 0 rgba(255, 255, 160, 0)); }
+  50% { filter: drop-shadow(0 0 9px rgba(255, 255, 160, 0.95)); }
+  100% { filter: drop-shadow(0 0 0 rgba(255, 255, 160, 0)); }
+}
+
+@keyframes growth-pulse {
+  0% { opacity: 0; }
+  35% { opacity: 0.75; background: radial-gradient(circle at center, rgba(255, 254, 178, 0.35) 0%, transparent 65%); }
+  100% { opacity: 0; }
+}
+
+@keyframes confetti {
+  0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+  100% { transform: translate(calc((var(--drift, 16) * 1px) - 36px), 120px) rotate(280deg); opacity: 0; }
+}
+
+@keyframes screen-shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-3px, 1px); }
+  40% { transform: translate(3px, -1px); }
+  60% { transform: translate(-2px, -1px); }
+  80% { transform: translate(2px, 1px); }
+}
+
+@keyframes butterfly-fly {
+  0% { transform: translateX(0) translateY(0); opacity: 0; }
+  8% { opacity: 1; }
+  22% { transform: translateX(120px) translateY(-22px); }
+  44% { transform: translateX(260px) translateY(16px); }
+  68% { transform: translateX(390px) translateY(-18px); }
+  88% { opacity: 1; }
+  100% { transform: translateX(560px) translateY(8px); opacity: 0; }
+}
+
+@keyframes grass-dance {
+  0%, 100% { transform: translateX(0) rotate(-4deg); }
+  50% { transform: translateX(1px) rotate(4deg); }
+}
+
+@keyframes tail-wiggle {
+  0%, 100% { transform: rotate(12deg); }
+  50% { transform: rotate(-14deg); }
+}
+
+@keyframes cat-blink {
+  0%, 92%, 100% { height: 3px; transform: translateY(0); }
+  94% { height: 1px; transform: translateY(1px); }
+}
+
+@keyframes cat-stretch {
+  0%, 80%, 100% { transform: translateY(0) scaleY(1); }
+  90% { transform: translateY(1px) scaleY(0.94); }
+}
+
+@keyframes cat-jump {
+  0% { transform: translateY(0); }
+  30% { transform: translateY(-14px); }
+  60% { transform: translateY(0); }
+  80% { transform: translateY(-6px); }
+  100% { transform: translateY(0); }
 }
 
 .drop-enter-active,
