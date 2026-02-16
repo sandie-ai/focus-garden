@@ -176,8 +176,12 @@ const lofiStations = [
 const selectedStation = ref(lofiStations[1].url)
 const audioRef = ref<HTMLAudioElement | null>(null)
 const audioPlaying = ref(false)
+const timerCatCycleKey = ref(0)
+const timerCatAnimating = ref(true)
+const timerCatStyle = ref<Record<string, string>>({})
 
 let timer: ReturnType<typeof setInterval> | null = null
+let timerCatDelayTimer: ReturnType<typeof setTimeout> | null = null
 
 const modeTitle = computed(() => mode.value === 'focus' ? 'Deep Focus' : 'Gentle Break')
 const modeHint = computed(() => mode.value === 'focus' ? 'Build momentum one calm session at a time.' : 'Let your attention reset before the next sprint.')
@@ -635,6 +639,85 @@ function formatHistoryTime(iso: string) {
   })
 }
 
+function randomBetween(min: number, max: number) {
+  return Math.random() * (max - min) + min
+}
+
+function buildTimerCatPathPoints() {
+  const pointCount = 5 + Math.floor(Math.random() * 3)
+  const radiusX = randomBetween(44, 62)
+  const radiusY = randomBetween(20, 34)
+  const jitter = randomBetween(3, 9)
+  const startAngle = randomBetween(0, Math.PI * 2)
+  const direction = Math.random() > 0.5 ? 1 : -1
+  const points: Array<{ x: number, y: number }> = []
+
+  for (let index = 0; index < pointCount; index += 1) {
+    const progress = index / pointCount
+    const angle = startAngle + direction * progress * Math.PI * 2
+    const x = Math.cos(angle) * radiusX + randomBetween(-jitter, jitter)
+    const y = Math.sin(angle) * radiusY + randomBetween(-jitter * 0.7, jitter * 0.7)
+    points.push({
+      x: Math.max(-64, Math.min(64, Math.round(x))),
+      y: Math.max(-36, Math.min(28, Math.round(y))),
+    })
+  }
+
+  return points
+}
+
+function buildTimerCatStyle() {
+  const points = buildTimerCatPathPoints()
+  const cycleDuration = randomBetween(5.8, 10.4)
+  const stepDuration = randomBetween(0.44, 0.76)
+  const tailDuration = randomBetween(1.3, 2.3)
+
+  return {
+    '--cat-cycle-duration': `${cycleDuration.toFixed(2)}s`,
+    '--cat-step-duration': `${stepDuration.toFixed(2)}s`,
+    '--cat-tail-duration': `${tailDuration.toFixed(2)}s`,
+    '--cat-p0x': `${points[0]?.x ?? -56}px`,
+    '--cat-p0y': `${points[0]?.y ?? -24}px`,
+    '--cat-p1x': `${points[1]?.x ?? -16}px`,
+    '--cat-p1y': `${points[1]?.y ?? -32}px`,
+    '--cat-p2x': `${points[2]?.x ?? 40}px`,
+    '--cat-p2y': `${points[2]?.y ?? -24}px`,
+    '--cat-p3x': `${points[3]?.x ?? 58}px`,
+    '--cat-p3y': `${points[3]?.y ?? 6}px`,
+    '--cat-p4x': `${points[4]?.x ?? 18}px`,
+    '--cat-p4y': `${points[4]?.y ?? 24}px`,
+    '--cat-p5x': `${points[5]?.x ?? -42}px`,
+    '--cat-p5y': `${points[5]?.y ?? 16}px`,
+    '--cat-p6x': `${points[6]?.x ?? -56}px`,
+    '--cat-p6y': `${points[6]?.y ?? -24}px`,
+  }
+}
+
+function clearTimerCatDelay() {
+  if (!timerCatDelayTimer) return
+  clearTimeout(timerCatDelayTimer)
+  timerCatDelayTimer = null
+}
+
+function startTimerCatCycle() {
+  clearTimerCatDelay()
+  timerCatStyle.value = buildTimerCatStyle()
+  timerCatAnimating.value = true
+  timerCatCycleKey.value += 1
+}
+
+function onTimerCatCycleEnd() {
+  if (!running.value) return
+
+  timerCatAnimating.value = false
+  const delay = Math.round(randomBetween(180, 1300))
+  timerCatDelayTimer = setTimeout(() => {
+    timerCatDelayTimer = null
+    if (!running.value) return
+    startTimerCatCycle()
+  }, delay)
+}
+
 async function toggleAudio() {
   const station = lofiStations.find(item => item.url === selectedStation.value)
 
@@ -678,6 +761,15 @@ watch(selectedStation, () => {
   persist()
 })
 
+watch(running, (isRunning) => {
+  if (!isRunning) {
+    clearTimerCatDelay()
+    timerCatAnimating.value = false
+    return
+  }
+  startTimerCatCycle()
+})
+
 onMounted(async () => {
   getOrCreateUserId()
 
@@ -718,10 +810,15 @@ onMounted(async () => {
   if (resetApplied) {
     void syncGardenToSupabase()
   }
+
+  if (running.value) {
+    startTimerCatCycle()
+  }
 })
 
 onBeforeUnmount(() => {
   stopTimer()
+  clearTimerCatDelay()
   if (audioRef.value) {
     audioRef.value.pause()
   }
@@ -772,8 +869,13 @@ onBeforeUnmount(() => {
             )}`,
           }"
         >
-          <div v-if="running" class="timer-pixel-cat" aria-hidden="true">
-            <div class="timer-pixel-cat__path">
+          <div v-if="running" class="timer-pixel-cat" :style="timerCatStyle" aria-hidden="true">
+            <div
+              :key="`cat-cycle-${timerCatCycleKey}`"
+              class="timer-pixel-cat__path"
+              :class="{ 'timer-pixel-cat__path--paused': !timerCatAnimating }"
+              @animationend="onTimerCatCycleEnd"
+            >
               <div class="timer-pixel-cat__facing">
                 <div class="timer-pixel-cat__sprite">
                   <span class="timer-pixel-cat__shadow" />
@@ -1294,14 +1396,40 @@ h1 {
   height: 0;
   z-index: 4;
   pointer-events: none;
+  --cat-cycle-duration: 7.6s;
+  --cat-step-duration: 0.58s;
+  --cat-tail-duration: 1.6s;
+  --cat-p0x: -58px;
+  --cat-p0y: -26px;
+  --cat-p1x: -22px;
+  --cat-p1y: -31px;
+  --cat-p2x: 44px;
+  --cat-p2y: -24px;
+  --cat-p3x: 56px;
+  --cat-p3y: 6px;
+  --cat-p4x: 24px;
+  --cat-p4y: 22px;
+  --cat-p5x: -42px;
+  --cat-p5y: 18px;
+  --cat-p6x: -58px;
+  --cat-p6y: -26px;
 }
 
 .timer-pixel-cat__path {
-  animation: timer-cat-path 7.6s steps(38) infinite;
+  animation-name: timer-cat-path;
+  animation-duration: var(--cat-cycle-duration);
+  animation-timing-function: linear;
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+}
+
+.timer-pixel-cat__path--paused {
+  animation: none;
+  transform: translate(var(--cat-p0x), var(--cat-p0y));
 }
 
 .timer-pixel-cat__facing {
-  animation: timer-cat-flip 7.6s steps(1) infinite;
+  animation: timer-cat-flip var(--cat-cycle-duration) steps(1) 1 both;
   transform-origin: center center;
 }
 
@@ -1309,7 +1437,7 @@ h1 {
   position: relative;
   width: 32px;
   height: 24px;
-  animation: timer-cat-step 0.58s steps(2) infinite;
+  animation: timer-cat-step var(--cat-step-duration) steps(2) infinite;
 }
 
 .timer-pixel-cat__shadow {
@@ -1319,7 +1447,7 @@ h1 {
   width: 18px;
   height: 4px;
   background: rgba(45, 42, 74, 0.35);
-  animation: timer-cat-shadow 0.58s steps(2) infinite;
+  animation: timer-cat-shadow var(--cat-step-duration) steps(2) infinite;
 }
 
 .timer-pixel-cat__tail {
@@ -1331,7 +1459,7 @@ h1 {
   border-top: 3px solid #6f5678;
   border-right: 2px solid #6f5678;
   transform-origin: left bottom;
-  animation: tail-wiggle 1.6s steps(4) infinite;
+  animation: tail-wiggle var(--cat-tail-duration) steps(4) infinite;
 }
 
 .timer-pixel-cat__body {
@@ -2280,13 +2408,13 @@ select {
 }
 
 @keyframes timer-cat-path {
-  0% { transform: translate(-58px, -26px); }
-  16% { transform: translate(-22px, -31px); }
-  33% { transform: translate(44px, -24px); }
-  50% { transform: translate(56px, 6px); }
-  68% { transform: translate(24px, 22px); }
-  84% { transform: translate(-42px, 18px); }
-  100% { transform: translate(-58px, -26px); }
+  0% { transform: translate(var(--cat-p0x), var(--cat-p0y)); }
+  16% { transform: translate(var(--cat-p1x), var(--cat-p1y)); }
+  32% { transform: translate(var(--cat-p2x), var(--cat-p2y)); }
+  48% { transform: translate(var(--cat-p3x), var(--cat-p3y)); }
+  64% { transform: translate(var(--cat-p4x), var(--cat-p4y)); }
+  82% { transform: translate(var(--cat-p5x), var(--cat-p5y)); }
+  100% { transform: translate(var(--cat-p6x), var(--cat-p6y)); }
 }
 
 @keyframes timer-cat-flip {
