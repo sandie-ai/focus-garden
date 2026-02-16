@@ -696,17 +696,28 @@ h3 { font-size: 0.95rem; color: #e2e8f0; margin-bottom: 0.5rem; }
   z-index: 1;
 }
 
-.controls, .presets {
+.controls {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
   justify-content: center;
+  margin-bottom: 0.75rem;
+}
+
+.presets {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 0.75rem;
 }
 
 @media (min-width: 640px) {
   .controls, .presets {
     gap: 0.6rem;
   }
+  .controls { margin-bottom: 1rem; }
+  .presets { margin-bottom: 1rem; }
 }
 
 button {
@@ -755,10 +766,10 @@ button:hover {
 }
 
 .inputs {
-  margin-top: 0.85rem;
+  margin-top: 1rem;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.6rem;
+  gap: 0.8rem;
 }
 
 label {
