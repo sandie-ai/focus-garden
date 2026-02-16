@@ -23,7 +23,72 @@ const USER_KEY = 'focus-garden:user-id'
 const config = useRuntimeConfig()
 const supabaseUrl = String(config.public.supabaseUrl || '').replace(/\/+$/, '')
 const supabaseToken = String(config.public.supabaseToken || '').trim()
-const supabaseEnabled = Boolean(supabaseUrl && supabaseToken)
+
+function createSupabaseClient(baseUrl: string, token: string) {
+  const normalizedBaseUrl = String(baseUrl || '').replace(/\/+$/, '')
+  const normalizedToken = String(token || '').trim()
+  const enabled = Boolean(normalizedBaseUrl && normalizedToken)
+
+  const headers = (prefer?: string) => {
+    const result: Record<string, string> = {
+      apikey: normalizedToken,
+      Authorization: `Bearer ${normalizedToken}`,
+      'Content-Type': 'application/json',
+    }
+    if (prefer) result.Prefer = prefer
+    return result
+  }
+
+  const loadGarden = async (userId: string) => {
+    if (!enabled) return null
+    const query = new URLSearchParams({
+      select: 'total_sessions,sessions_today,streak_days,last_session_date',
+      user_id: `eq.${userId}`,
+      limit: '1',
+    })
+
+    const response = await fetch(`${normalizedBaseUrl}/rest/v1/garden_sessions?${query.toString()}`, {
+      method: 'GET',
+      headers: headers(),
+    })
+    if (!response.ok) {
+      throw new Error(`load failed with status ${response.status}`)
+    }
+
+    const rows = await response.json() as SupabaseGardenSessionRow[]
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : null
+  }
+
+  const upsertGarden = async (userId: string, state: GardenState) => {
+    if (!enabled) return
+    const payload = {
+      user_id: userId,
+      total_sessions: state.totalSessions,
+      sessions_today: state.sessionsToday,
+      streak_days: state.streakDays,
+      last_session_date: state.lastSessionDate,
+      updated_at: new Date().toISOString(),
+    }
+
+    const response = await fetch(`${normalizedBaseUrl}/rest/v1/garden_sessions?on_conflict=user_id`, {
+      method: 'POST',
+      headers: headers('resolution=merge-duplicates,return=minimal'),
+      body: JSON.stringify(payload),
+    })
+    if (!response.ok) {
+      throw new Error(`sync failed with status ${response.status}`)
+    }
+  }
+
+  return {
+    enabled,
+    loadGarden,
+    upsertGarden,
+  }
+}
+
+const supabaseClient = createSupabaseClient(supabaseUrl, supabaseToken)
+const supabaseEnabled = supabaseClient.enabled
 
 const focusMinutes = ref(25)
 const breakMinutes = ref(5)
@@ -170,16 +235,6 @@ function syncDailyCounters() {
   return false
 }
 
-function supabaseHeaders(prefer?: string) {
-  const headers: Record<string, string> = {
-    apikey: supabaseToken,
-    Authorization: `Bearer ${supabaseToken}`,
-    'Content-Type': 'application/json',
-  }
-  if (prefer) headers.Prefer = prefer
-  return headers
-}
-
 async function ensureSupabaseTable() {
   if (!supabaseEnabled) return false
   try {
@@ -198,26 +253,11 @@ async function loadGardenFromSupabase() {
   if (!supabaseEnabled) return null
 
   const userId = getOrCreateUserId()
-  const query = new URLSearchParams({
-    select: 'total_sessions,sessions_today,streak_days,last_session_date',
-    user_id: `eq.${userId}`,
-    limit: '1',
-  })
 
   try {
-    const response = await fetch(`${supabaseUrl}/rest/v1/garden_sessions?${query.toString()}`, {
-      method: 'GET',
-      headers: supabaseHeaders(),
-    })
+    const row = await supabaseClient.loadGarden(userId)
+    if (!row) return null
 
-    if (!response.ok) {
-      throw new Error(`load failed with status ${response.status}`)
-    }
-
-    const rows = await response.json() as SupabaseGardenSessionRow[]
-    if (!Array.isArray(rows) || rows.length === 0) return null
-
-    const row = rows[0]
     return sanitizeGardenState({
       totalSessions: row.total_sessions,
       sessionsToday: row.sessions_today,
@@ -236,26 +276,8 @@ async function syncGardenToSupabase() {
   syncInProgress.value = true
   const userId = getOrCreateUserId()
 
-  const payload = {
-    user_id: userId,
-    total_sessions: garden.value.totalSessions,
-    sessions_today: garden.value.sessionsToday,
-    streak_days: garden.value.streakDays,
-    last_session_date: garden.value.lastSessionDate,
-    updated_at: new Date().toISOString(),
-  }
-
   try {
-    const response = await fetch(`${supabaseUrl}/rest/v1/garden_sessions?on_conflict=user_id`, {
-      method: 'POST',
-      headers: supabaseHeaders('resolution=merge-duplicates,return=minimal'),
-      body: JSON.stringify(payload),
-    })
-
-    if (!response.ok) {
-      throw new Error(`sync failed with status ${response.status}`)
-    }
-
+    await supabaseClient.upsertGarden(userId, garden.value)
     return true
   } catch (error) {
     console.warn('[focus-garden] Supabase sync failed. localStorage remains source of truth.', error)

@@ -4,9 +4,9 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   runtimeConfig: {
     supabaseToken: process.env.SUPABASE_TOKEN || 'sbp_2feae4f3fd6ed28f6777be024857d03a2cb45e8a',
-    supabaseProjectRef: process.env.SUPABASE_PROJECT_REF || '',
+    supabaseProjectRef: process.env.SUPABASE_PROJECT_REF || 'aitjitsdkndygtzcegqf',
     public: {
-      supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL || '',
+      supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL || 'https://aitjitsdkndygtzcegqf.supabase.co',
       supabaseToken: process.env.NUXT_PUBLIC_SUPABASE_TOKEN || process.env.SUPABASE_TOKEN || 'sbp_2feae4f3fd6ed28f6777be024857d03a2cb45e8a',
     },
   },
