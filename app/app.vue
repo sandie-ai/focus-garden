@@ -59,25 +59,25 @@ const gardenStage = computed(() => {
 
 const plantCount = computed(() => Math.min(12, Math.floor(garden.value.totalSessions / 2) + 1))
 
-const progressToNext = computed(() => {
-  const thresholds = [3, 10, 20, 30]
-  const current = garden.value.totalSessions
-  const next = thresholds.find(t => current < t)
-  if (!next) return 100
-  const prev = [...thresholds].reverse().find(t => t <= current) ?? 0
-  const ratio = ((current - prev) / (next - prev)) * 100
-  return Math.max(0, Math.min(100, Math.round(ratio)))
+// Generate plants with different types
+const plants = computed(() => {
+  const types = ['flower', 'sunflower', 'tulip', 'rose', 'cactus', 'succulent']
+  return Array.from({ length: plantCount.value }, (_, i) => ({
+    id: i,
+    type: types[i % types.length],
+    style: makePlantStyle(i)
+  }))
 })
 
 function makePlantStyle(index: number) {
-  const left = ((index * 73) % 92) + 4
-  const scale = 0.85 + ((index * 11) % 3) * 0.15
-  const bottom = 28 + ((index * 7) % 8)
+  const left = ((index * 73) % 85) + 8
+  const scale = 0.8 + ((index * 7) % 4) * 0.15
+  const bottom = 22 + ((index * 11) % 12)
   return {
     left: `${left}%`,
     bottom: `${bottom}%`,
     transform: `translateX(-50%) scale(${scale})`,
-    animationDelay: `${index * 0.1}s`,
+    animationDelay: `${index * 0.15}s`,
   }
 }
 
@@ -126,7 +126,6 @@ function completeFocusSession() {
   garden.value.totalSessions += 1
   garden.value.sessionsToday += 1
 
-  // Mark new plants for animation
   const newCount = garden.value.totalSessions
   const newPlantIndices: number[] = []
   for (let i = Math.floor(prevCount / 2); i < Math.floor(newCount / 2); i++) {
@@ -144,7 +143,6 @@ function completeFocusSession() {
     const dToday = new Date(today)
     const delta = Math.round((dToday.getTime() - dLast.getTime()) / 86400000)
     if (delta === 0) {
-      // same day, streak unchanged
     } else if (delta === 1) {
       garden.value.streakDays += 1
     } else {
@@ -258,9 +256,9 @@ onMounted(() => {
   <NuxtRouteAnnouncer />
   <main class="app" :data-phase="dayPhase">
     <section class="panel timer-panel">
-      <div class="brand">Focus Garden</div>
+      <div class="brand">🌱 Focus Garden</div>
       <h1>{{ mode === 'focus' ? 'Focus Time' : 'Break Time' }}</h1>
-      <p class="subtitle">Grow your garden, grow your focus 🌱</p>
+      <p class="subtitle">Grow your garden, grow your mind</p>
 
       <div class="timer-container">
         <div class="timer-glow" />
@@ -296,7 +294,7 @@ onMounted(() => {
       </div>
 
       <div class="audio-box">
-        <label for="station">Lo-fi Ambiance</label>
+        <label for="station">🎵 Lo-fi Ambiance</label>
         <select id="station" v-model="selectedStation">
           <option v-for="station in lofiStations" :key="station.url" :value="station.url">
             {{ station.name }}
@@ -310,11 +308,11 @@ onMounted(() => {
     </section>
 
     <section class="panel garden-panel">
-      <h2>Your Garden</h2>
+      <h2>🌸 Your Garden</h2>
       <div class="stats">
         <div class="stat">
           <span class="stat-value">{{ garden.totalSessions }}</span>
-          <span class="stat-label">Total Sessions</span>
+          <span class="stat-label">Total</span>
         </div>
         <div class="stat">
           <span class="stat-value">{{ garden.sessionsToday }}</span>
@@ -335,102 +333,180 @@ onMounted(() => {
       </div>
 
       <div class="garden-canvas">
-        <!-- Stars for night phase -->
-        <div v-if="dayPhase === 'night'" class="stars">
-          <span v-for="i in 20" :key="i" class="star" :style="{ 
-            left: `${(i * 17) % 100}%`, 
-            top: `${(i * 23) % 60}%`,
+        <!-- Sky -->
+        <div class="sky">
+          <!-- Stars -->
+          <template v-if="dayPhase === 'night'">
+            <span v-for="i in 30" :key="i" class="star" :style="{
+              left: `${(i * 37) % 100}%`,
+              top: `${(i * 23) % 50}%`,
+              animationDelay: `${i * 0.2}s`,
+              opacity: 0.3 + (i % 3) * 0.25
+            }" />
+          </template>
+          
+          <!-- Moon -->
+          <div v-if="dayPhase === 'night'" class="moon">
+            <span class="moon-crater c1" />
+            <span class="moon-crater c2" />
+            <span class="moon-crater c3" />
+          </div>
+          
+          <!-- Sun -->
+          <div v-if="dayPhase !== 'night'" class="sun" :class="dayPhase" />
+          
+          <!-- Clouds -->
+          <div class="clouds">
+            <span class="cloud c1" />
+            <span class="cloud c2" />
+            <span class="cloud c3" />
+          </div>
+        </div>
+
+        <!-- Hills -->
+        <div class="hills">
+          <div class="hill hill-1" />
+          <div class="hill hill-2" />
+          <div class="hill hill-3" />
+        </div>
+
+        <!-- Ground -->
+        <div class="ground">
+          <div class="ground-grass">
+            <span v-for="i in 20" :key="i" class="grass-blade" :style="{
+              left: `${i * 5}%`,
+              height: `${8 + (i % 5) * 3}px`,
+              animationDelay: `${i * 0.1}s`
+            }" />
+          </div>
+        </div>
+
+        <!-- Pixel Plants -->
+        <div
+          v-for="plant in plants"
+          :key="plant.id"
+          class="pixel-plant"
+          :class="{ 'newly-planted': newlyPlanted.includes(plant.id), [plant.type]: true }"
+          :style="plant.style"
+        >
+          <!-- Flower -->
+          <template v-if="plant.type === 'flower'">
+            <div class="pixel-stem" />
+            <div class="pixel-leaf leaf-l" />
+            <div class="pixel-leaf leaf-r" />
+            <div class="pixel-flower-head">
+              <span class="petal p1" />
+              <span class="petal p2" />
+              <span class="petal p3" />
+              <span class="petal p4" />
+              <span class="petal p5" />
+              <span class="petal p6" />
+              <span class="flower-center" />
+            </div>
+          </template>
+
+          <!-- Sunflower -->
+          <template v-else-if="plant.type === 'sunflower'">
+            <div class="pixel-stem" />
+            <div class="pixel-leaf leaf-l" />
+            <div class="pixel-leaf leaf-r" />
+            <div class="sunflower-head">
+              <span class="seed-row r1" />
+              <span class="seed-row r2" />
+              <span class="seed-row r3" />
+              <span class="seed-row r4" />
+              <div class="sunflower-center" />
+            </div>
+          </template>
+
+          <!-- Tulip -->
+          <template v-else-if="plant.type === 'tulip'">
+            <div class="pixel-stem" />
+            <div class="tulip-head">
+              <span class="tulip-petal p1" />
+              <span class="tulip-petal p2" />
+              <span class="tulip-petal p3" />
+            </div>
+          </template>
+
+          <!-- Rose -->
+          <template v-else-if="plant.type === 'rose'">
+            <div class="pixel-stem" />
+            <div class="pixel-leaf leaf-l" />
+            <div class="pixel-leaf leaf-r" />
+            <div class="rose-head">
+              <span class="rose-petal rp1" />
+              <span class="rose-petal rp2" />
+              <span class="rose-petal rp3" />
+              <span class="rose-petal rp4" />
+              <span class="rose-center" />
+            </div>
+          </template>
+
+          <!-- Cactus -->
+          <template v-else-if="plant.type === 'cactus'">
+            <div class="cactus-body">
+              <span class="cactus-arm arm-l" />
+              <span class="cactus-arm arm-r" />
+              <span class="cactus-top" />
+            </div>
+            <div v-if="gardenStage >= 2" class="cactus-flower" />
+          </template>
+
+          <!-- Succulent -->
+          <template v-else-if="plant.type === 'succulent'">
+            <div class="succulent-base">
+              <span class="succulent-leaf sl1" />
+              <span class="succulent-leaf sl2" />
+              <span class="succulent-leaf sl3" />
+              <span class="succulent-leaf sl4" />
+              <span class="succulent-leaf sl5" />
+              <span class="succulent-leaf sl6" />
+            </div>
+          </template>
+        </div>
+
+        <!-- Fireflies -->
+        <template v-if="dayPhase !== 'day'">
+          <span v-for="i in 12" :key="i" class="firefly" :style="{
+            left: `${(i * 23) % 100}%`,
+            top: `${20 + (i * 17) % 50}%`,
             animationDelay: `${i * 0.3}s`
           }" />
-        </div>
-        
-        <!-- Moon for night -->
-        <div v-if="dayPhase === 'night'" class="moon" />
-        
-        <!-- Sun for day/sunset -->
-        <div v-if="dayPhase !== 'night'" class="sun" :class="dayPhase" />
-        
-        <!-- Clouds -->
-        <div class="clouds">
-          <span class="cloud c1" />
-          <span class="cloud c2" />
-        </div>
+        </template>
 
-        <!-- Ground/grass -->
-        <div class="ground">
-          <div class="grass-layer" />
-          <div class="grass-layer grass-2" />
-        </div>
-
-        <!-- Plants -->
-        <div
-          v-for="i in plantCount"
-          :key="i"
-          class="plant"
-          :class="{ 'newly-planted': newlyPlanted.includes(i-1) }"
-          :style="makePlantStyle(i)"
-          :data-stage="Math.min(gardenStage, 4)"
-        >
-          <svg viewBox="0 0 64 128" class="plant-svg">
-            <!-- Pot -->
-            <path d="M20 110 L24 125 L40 125 L44 110 Z" fill="#8B4513" />
-            <ellipse cx="32" cy="110" rx="14" ry="4" fill="#A0522D" />
-            
-            <!-- Stem -->
-            <path d="M32 108 Q34 80 32 50" stroke="#2D5A27" stroke-width="4" fill="none" stroke-linecap="round" />
-            
-            <!-- Leaves based on stage -->
-            <g v-if="gardenStage >= 1">
-              <path d="M32 85 Q20 80 15 70 Q22 78 32 82" fill="#4CAF50" />
-              <path d="M32 85 Q44 80 49 70 Q42 78 32 82" fill="#4CAF50" />
-            </g>
-            <g v-if="gardenStage >= 2">
-              <path d="M32 65 Q18 60 12 48 Q22 58 30 62" fill="#66BB6A" />
-              <path d="M32 65 Q46 60 52 48 Q42 58 34 62" fill="#66BB6A" />
-            </g>
-            <g v-if="gardenStage >= 3">
-              <path d="M32 45 Q22 38 18 25 Q28 35 32 40" fill="#81C784" />
-              <path d="M32 45 Q42 38 46 25 Q36 35 32 40" fill="#81C784" />
-            </g>
-            
-            <!-- Flower/fruit based on stage -->
-            <g v-if="gardenStage >= 2">
-              <circle cx="32" cy="35" r="8" fill="#FFE082" />
-              <circle cx="32" cy="35" r="5" fill="#FFB74D" />
-            </g>
-            <g v-if="gardenStage >= 4">
-              <!-- Extra sparkle for max stage -->
-              <circle cx="28" cy="30" r="2" fill="#FFF" class="sparkle" />
-              <circle cx="38" cy="38" r="1.5" fill="#FFF" class="sparkle" style="animation-delay: 0.5s" />
-            </g>
-          </svg>
-        </div>
-
-        <!-- Fireflies for sunset/night -->
-        <div v-if="dayPhase !== 'day'" class="fireflies">
-          <span v-for="i in 8" :key="i" class="firefly" :style="{
-            left: `${(i * 31) % 100}%`,
-            top: `${30 + (i * 17) % 50}%`,
-            animationDelay: `${i * 0.4}s`
+        <!-- Birds for day -->
+        <template v-if="dayPhase === 'day'">
+          <span v-for="i in 3" :key="i" class="bird" :style="{
+            left: `${20 + i * 25}%`,
+            top: `${15 + i * 5}%`,
+            animationDelay: `${i * 0.5}s`
           }" />
-        </div>
+        </template>
       </div>
 
-      <p class="hint">
-        Complete focus sessions to grow your garden ✨
-      </p>
+      <p class="hint">Complete focus sessions to grow your garden ✨</p>
     </section>
   </main>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Press+Start+2P&display=swap');
+
+:root {
+  --bg-dark: #0c1222;
+  --bg-panel: rgba(255,255,255,0.06);
+  --accent-green: #22c55e;
+  --accent-glow: rgba(34,197,94,0.4);
+  --text-primary: #f0f4f8;
+  --text-secondary: #94a3b8;
+}
 
 :global(body) {
   margin: 0;
-  font-family: 'Outfit', ui-sans-serif, system-ui, -apple-system, sans-serif;
-  background: #0a0e17;
-  color: #f0f4f8;
+  font-family: 'Outfit', sans-serif;
+  background: var(--bg-dark);
+  color: var(--text-primary);
 }
 
 .app {
@@ -443,66 +519,62 @@ onMounted(() => {
 }
 
 .app[data-phase='day'] { 
-  background: linear-gradient(180deg, #1a2a4a 0%, #0f1729 50%, #0a101c 100%);
+  background: linear-gradient(180deg, #1e3a5f 0%, #0f1f35 60%, #0a1425 100%);
 }
 .app[data-phase='sunset'] { 
-  background: linear-gradient(180deg, #2d1f3d 0%, #1a1429 50%, #0f0d18 100%);
+  background: linear-gradient(180deg, #2d1f4a 0%, #1a1435 60%, #0d0a1f 100%);
 }
 .app[data-phase='night'] { 
-  background: linear-gradient(180deg, #0c1222 0%, #060912 50%, #030508 100%);
+  background: linear-gradient(180deg, #0a1020 0%, #040810 60%, #020408 100%);
 }
 
 @media (min-width: 980px) {
   .app {
-    grid-template-columns: 1fr 1.2fr;
+    grid-template-columns: 1fr 1.3fr;
     padding: 1.5rem;
     gap: 2rem;
   }
 }
 
 .panel {
-  background: linear-gradient(145deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%);
+  background: linear-gradient(145deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%);
   border: 1px solid rgba(255,255,255,0.1);
   border-radius: 24px;
   padding: 1.5rem;
   backdrop-filter: blur(20px);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
 }
 
 .brand {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  background: linear-gradient(135deg, rgba(34,197,94,0.3) 0%, rgba(16,185,129,0.2) 100%);
+  background: linear-gradient(135deg, rgba(34,197,94,0.25) 0%, rgba(16,185,129,0.15) 100%);
   color: #86efac;
   border: 1px solid rgba(134,239,172,0.3);
   border-radius: 999px;
   padding: 0.35rem 0.85rem;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   font-weight: 600;
-  letter-spacing: 0.5px;
 }
 
-h1, h2 {
-  margin: 0;
-  font-weight: 800;
-}
+h1, h2 { margin: 0; font-weight: 800; }
 
 h1 {
   font-size: 1.75rem;
-  background: linear-gradient(135deg, #f0f9ff 0%, #c7d2fe 100%);
+  background: linear-gradient(135deg, #fff 0%, #c7d2fe 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 h2 {
-  font-size: 1.4rem;
+  font-size: 1.3rem;
   color: #e2e8f0;
 }
 
 .subtitle {
-  margin: 0.4rem 0 1.2rem;
+  margin: 0.4rem 0 1rem;
   color: #94a3b8;
   font-size: 0.95rem;
 }
@@ -517,25 +589,25 @@ h2 {
 
 .timer-glow {
   position: absolute;
-  width: 200px;
-  height: 200px;
-  background: radial-gradient(circle, rgba(34,197,94,0.15) 0%, transparent 70%);
+  width: 220px;
+  height: 220px;
+  background: radial-gradient(circle, rgba(34,197,94,0.2) 0%, transparent 70%);
   border-radius: 50%;
   animation: pulse-glow 3s ease-in-out infinite;
 }
 
 @keyframes pulse-glow {
-  0%, 100% { transform: scale(1); opacity: 0.6; }
-  50% { transform: scale(1.1); opacity: 1; }
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50% { transform: scale(1.15); opacity: 1; }
 }
 
 .timer {
   font-size: clamp(3rem, 12vw, 5.5rem);
   font-weight: 800;
-  letter-spacing: 4px;
+  letter-spacing: 6px;
   font-variant-numeric: tabular-nums;
-  color: #f8fafc;
-  text-shadow: 0 0 40px rgba(34,197,94,0.4);
+  color: #fff;
+  text-shadow: 0 0 50px rgba(34,197,94,0.5);
   position: relative;
   z-index: 1;
 }
@@ -549,7 +621,7 @@ h2 {
 
 button {
   border: 1px solid rgba(255,255,255,0.15);
-  background: linear-gradient(145deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+  background: linear-gradient(145deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.03) 100%);
   color: #e2e8f0;
   padding: 0.7rem 1.2rem;
   border-radius: 14px;
@@ -561,9 +633,9 @@ button {
 }
 
 button:hover {
-  background: linear-gradient(145deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.1) 100%);
+  background: linear-gradient(145deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.08) 100%);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
 }
 
 .primary {
@@ -571,12 +643,12 @@ button:hover {
   border: none;
   color: white;
   padding: 0.7rem 1.8rem;
-  box-shadow: 0 4px 20px rgba(34,197,94,0.4);
+  box-shadow: 0 4px 24px rgba(34,197,94,0.4);
 }
 
 .primary:hover {
   background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
-  box-shadow: 0 6px 24px rgba(34,197,94,0.5);
+  box-shadow: 0 6px 28px rgba(34,197,94,0.5);
 }
 
 .inputs {
@@ -602,7 +674,6 @@ input, select {
   color: #f1f5f9;
   font-family: inherit;
   font-size: 1rem;
-  transition: border-color 0.2s;
 }
 
 input:focus, select:focus {
@@ -616,12 +687,9 @@ input:focus, select:focus {
   gap: 0.5rem;
 }
 
-.audio-btn {
-  width: fit-content;
-  justify-self: center;
-}
+.audio-btn { width: fit-content; justify-self: center; }
 
-/* Garden Panel */
+/* Stats */
 .stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -638,9 +706,7 @@ input:focus, select:focus {
   transition: transform 0.2s;
 }
 
-.stat:hover {
-  transform: translateY(-2px);
-}
+.stat:hover { transform: translateY(-2px); }
 
 .stat-value {
   display: block;
@@ -664,9 +730,7 @@ input:focus, select:focus {
   font-size: 0.85rem;
 }
 
-.progress-text {
-  color: #86efac;
-}
+.progress-text { color: #86efac; }
 
 .progress {
   height: 8px;
@@ -687,21 +751,16 @@ input:focus, select:focus {
 /* Garden Canvas */
 .garden-canvas {
   position: relative;
-  height: 300px;
+  height: 320px;
   margin-top: 1.25rem;
   border-radius: 20px;
   overflow: hidden;
-  background: linear-gradient(180deg, 
-    transparent 0%, 
-    rgba(59,130,246,0.1) 30%,
-    rgba(16,185,129,0.15) 60%,
-    rgba(34,197,94,0.2) 100%
-  );
+  background: linear-gradient(180deg, transparent 0%, transparent 35%, #1a3a25 60%, #0d2818 100%);
   border: 1px solid rgba(255,255,255,0.12);
 }
 
-/* Sky elements */
-.stars {
+/* Sky */
+.sky {
   position: absolute;
   inset: 0;
   overflow: hidden;
@@ -717,40 +776,49 @@ input:focus, select:focus {
 }
 
 @keyframes twinkle {
-  0%, 100% { opacity: 0.3; }
+  0%, 100% { opacity: 0.2; }
   50% { opacity: 1; }
 }
 
 .moon {
   position: absolute;
-  top: 20px;
-  right: 30px;
-  width: 40px;
-  height: 40px;
-  background: radial-gradient(circle at 30% 30%, #fef9c3, #fde047);
+  top: 25px;
+  right: 35px;
+  width: 44px;
+  height: 44px;
+  background: radial-gradient(circle at 30% 30%, #fefce8, #fef08a);
   border-radius: 50%;
-  box-shadow: 0 0 30px rgba(253,224,71,0.5);
+  box-shadow: 0 0 30px rgba(254,240,138,0.6), inset -8px -8px 12px rgba(0,0,0,0.1);
 }
+
+.moon-crater {
+  position: absolute;
+  background: rgba(0,0,0,0.1);
+  border-radius: 50%;
+}
+.moon-crater.c1 { width: 8px; height: 8px; top: 10px; left: 12px; }
+.moon-crater.c2 { width: 5px; height: 5px; top: 22px; left: 8px; }
+.moon-crater.c3 { width: 6px; height: 6px; top: 18px; left: 26px; }
 
 .sun {
   position: absolute;
-  top: 15px;
+  top: 18px;
   left: 50%;
   transform: translateX(-50%);
-  width: 50px;
-  height: 50px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
   transition: all 0.8s ease;
 }
 
 .sun.day {
   background: radial-gradient(circle at 30% 30%, #fef08a, #fbbf24);
-  box-shadow: 0 0 40px rgba(251,191,36,0.6);
+  box-shadow: 0 0 50px rgba(251,191,36,0.6), 0 0 100px rgba(251,191,36,0.3);
 }
 
 .sun.sunset {
   background: radial-gradient(circle at 30% 30%, #fdba74, #f97316);
-  box-shadow: 0 0 50px rgba(249,115,22,0.5);
+  box-shadow: 0 0 60px rgba(249,115,22,0.6);
 }
 
 .clouds {
@@ -760,32 +828,55 @@ input:focus, select:focus {
 
 .cloud {
   position: absolute;
-  background: rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.2);
   border-radius: 50px;
-  filter: blur(8px);
-  animation: float-cloud 20s linear infinite;
+  filter: blur(10px);
 }
 
-.cloud.c1 {
-  width: 80px;
-  height: 25px;
-  top: 25px;
-  left: -100px;
-  animation-duration: 25s;
-}
+.cloud.c1 { width: 70px; height: 22px; top: 30px; left: -80px; animation: float 28s linear infinite; }
+.cloud.c2 { width: 50px; height: 18px; top: 50px; left: -80px; animation: float 22s linear infinite 3s; }
+.cloud.c3 { width: 60px; height: 20px; top: 70px; left: -80px; animation: float 25s linear infinite 8s; }
 
-.cloud.c2 {
-  width: 60px;
-  height: 20px;
-  top: 45px;
-  left: -100px;
-  animation-duration: 18s;
-  animation-delay: 5s;
-}
-
-@keyframes float-cloud {
+@keyframes float {
   from { transform: translateX(0); }
   to { transform: translateX(calc(100vw + 100px)); }
+}
+
+/* Hills */
+.hills {
+  position: absolute;
+  bottom: 55px;
+  left: 0;
+  right: 0;
+}
+
+.hill {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.hill-1 {
+  width: 200px;
+  height: 60px;
+  background: #1a4a32;
+  left: -20px;
+  bottom: 0;
+}
+
+.hill-2 {
+  width: 180px;
+  height: 50px;
+  background: #145028;
+  right: -10px;
+  bottom: 0;
+}
+
+.hill-3 {
+  width: 150px;
+  height: 40px;
+  background: #0f3820;
+  left: 30%;
+  bottom: 0;
 }
 
 /* Ground */
@@ -794,107 +885,324 @@ input:focus, select:focus {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 70px;
-  overflow: hidden;
+  height: 55px;
+  background: linear-gradient(180deg, #1a5c32 0%, #0d3a1f 50%, #082a16 100%);
 }
 
-.grass-layer {
+.ground-grass {
+  position: absolute;
+  top: -8px;
+  left: 0;
+  right: 0;
+  height: 12px;
+}
+
+.grass-blade {
   position: absolute;
   bottom: 0;
-  left: -5%;
-  width: 110%;
-  height: 30px;
-  background: linear-gradient(180deg, #22c55e 0%, #15803d 50%, #14532d 100%);
-  border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+  width: 3px;
+  background: linear-gradient(to top, #145028, #22c55e);
+  border-radius: 3px 3px 0 0;
+  transform-origin: bottom center;
+  animation: grass-sway 2s ease-in-out infinite;
 }
 
-.grass-layer.grass-2 {
-  bottom: 5px;
-  height: 20px;
-  background: linear-gradient(180deg, #16a34a 0%, #166534 100%);
-  opacity: 0.7;
+@keyframes grass-sway {
+  0%, 100% { transform: rotate(-5deg); }
+  50% { transform: rotate(5deg); }
 }
 
-/* Plants */
-.plant {
+/* Pixel Plants */
+.pixel-plant {
   position: absolute;
-  width: 40px;
-  height: 80px;
+  width: 32px;
+  height: 60px;
   transition: all 0.5s ease;
-  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));
 }
 
-.plant.newly-planted {
-  animation: plant-grow 1.5s ease-out forwards;
+.pixel-plant.newly-planted {
+  animation: plant-spawn 1.5s ease-out forwards;
 }
 
-@keyframes plant-grow {
-  0% { 
-    transform: translateX(-50%) scale(0) translateY(20px);
-    opacity: 0;
-  }
-  50% {
-    opacity: 1;
-  }
-  100% { 
-    transform: translateX(-50%) scale(1) translateY(0);
-    opacity: 1;
-  }
+@keyframes plant-spawn {
+  0% { transform: translateX(-50%) scale(0) translateY(30px); opacity: 0; }
+  60% { transform: translateX(-50%) scale(1.1) translateY(0); opacity: 1; }
+  100% { transform: translateX(-50%) scale(1) translateY(0); opacity: 1; }
 }
 
-.plant-svg {
-  width: 100%;
-  height: 100%;
-  animation: gentle-sway 4s ease-in-out infinite;
+/* Stem */
+.pixel-stem {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 35px;
+  background: linear-gradient(90deg, #15803d, #22c55e, #15803d);
+  border-radius: 2px;
 }
 
-@keyframes gentle-sway {
-  0%, 100% { transform: rotate(-2deg); }
-  50% { transform: rotate(2deg); }
+/* Leaves */
+.pixel-leaf {
+  position: absolute;
+  width: 12px;
+  height: 8px;
+  background: #22c55e;
+  border-radius: 50% 50% 50% 50%;
 }
 
-.sparkle {
-  animation: sparkle 1.5s ease-in-out infinite;
+.leaf-l { left: 0; bottom: 15px; transform: rotate(-30deg); }
+.leaf-r { right: 0; bottom: 20px; transform: rotate(30deg) scaleX(-1); }
+
+/* Flower head */
+.pixel-flower-head {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 24px;
+  animation: flower-bob 3s ease-in-out infinite;
 }
 
-@keyframes sparkle {
-  0%, 100% { opacity: 0.3; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.5); }
+@keyframes flower-bob {
+  0%, 100% { transform: translateX(-50%) rotate(-3deg); }
+  50% { transform: translateX(-50%) rotate(3deg); }
 }
+
+.petal {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50% 50% 50% 50%;
+  background: linear-gradient(135deg, #f472b6, #ec4899);
+}
+
+.p1 { top: 0; left: 50%; transform: translateX(-50%); }
+.p2 { top: 4px; right: 0; }
+.p3 { bottom: 4px; right: 0; }
+.p4 { bottom: 0; left: 50%; transform: translateX(-50%); }
+.p5 { bottom: 4px; left: 0; }
+.p6 { top: 4px; left: 0; }
+
+.flower-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  background: #fbbf24;
+  border-radius: 50%;
+}
+
+/* Sunflower */
+.sunflower-head {
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 28px;
+  height: 28px;
+}
+
+.seed-row {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 3px;
+  background: #854d0e;
+  border-radius: 2px;
+}
+
+.r1 { top: 2px; }
+.r2 { top: 7px; width: 24px; }
+.r3 { top: 12px; width: 22px; }
+.r4 { top: 17px; width: 16px; }
+
+.sunflower-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 14px;
+  background: linear-gradient(135deg, #78350f, #451a03);
+  border-radius: 50%;
+}
+
+/* Tulip */
+.tulip-head {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 22px;
+}
+
+.tulip-petal {
+  position: absolute;
+  bottom: 0;
+  width: 10px;
+  height: 18px;
+  border-radius: 50% 50% 40% 40%;
+}
+
+.tulip-petal.p1 { left: 50%; transform: translateX(-50%); background: linear-gradient(to top, #f43f5e, #fb7185); }
+.tulip-petal.p2 { left: 0; background: linear-gradient(to top, #e11d48, #f43f5e); transform: rotate(-15deg); }
+.tulip-petal.p3 { right: 0; background: linear-gradient(to top, #e11d48, #f43f5e); transform: rotate(15deg) scaleX(-1); }
+
+/* Rose */
+.rose-head {
+  position: absolute;
+  top: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 22px;
+  height: 22px;
+}
+
+.rose-petal {
+  position: absolute;
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  border-radius: 50%;
+}
+
+.rp1 { width: 10px; height: 10px; top: 2px; left: 6px; }
+.rp2 { width: 8px; height: 8px; top: 6px; left: 2px; }
+.rp3 { width: 8px; height: 8px; top: 6px; right: 2px; }
+.rp4 { width: 6px; height: 6px; bottom: 4px; left: 8px; }
+
+.rose-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 6px;
+  height: 6px;
+  background: #7f1d1d;
+  border-radius: 50%;
+}
+
+/* Cactus */
+.cactus-body {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 18px;
+  height: 45px;
+  background: linear-gradient(90deg, #166534, #22c55e, #166534);
+  border-radius: 8px 8px 4px 4px;
+}
+
+.cactus-arm {
+  position: absolute;
+  width: 10px;
+  height: 20px;
+  background: linear-gradient(90deg, #166534, #22c55e);
+  border-radius: 5px;
+}
+
+.arm-l { left: -8px; bottom: 15px; border-radius: 5px 0 0 5px; }
+.arm-r { right: -8px; bottom: 20px; border-radius: 0 5px 5px 0; }
+
+.cactus-top {
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 14px;
+  height: 6px;
+  background: #22c55e;
+  border-radius: 50%;
+}
+
+.cactus-flower {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 10px;
+  background: radial-gradient(circle, #f472b6, #ec4899);
+  border-radius: 50%;
+}
+
+/* Succulent */
+.succulent-base {
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 28px;
+  height: 20px;
+}
+
+.succulent-leaf {
+  position: absolute;
+  width: 12px;
+  height: 14px;
+  background: linear-gradient(135deg, #6ee7b7, #34d399);
+  border-radius: 50% 50% 50% 50%;
+}
+
+.sl1 { top: 0; left: 50%; transform: translateX(-50%); }
+.sl2 { top: 4px; left: 2px; }
+.sl3 { top: 4px; right: 2px; }
+.sl4 { top: 10px; left: 0; }
+.sl5 { top: 10px; right: 0; }
+.sl6 { bottom: 0; left: 50%; transform: translateX(-50%); }
 
 /* Fireflies */
-.fireflies {
-  position: absolute;
-  inset: 0;
-}
-
 .firefly {
   position: absolute;
   width: 4px;
   height: 4px;
   background: #fef08a;
   border-radius: 50%;
-  box-shadow: 0 0 10px #fef08a, 0 0 20px #fef08a;
-  animation: firefly 3s ease-in-out infinite;
+  box-shadow: 0 0 8px #fef08a, 0 0 16px #fef08a;
+  animation: firefly 4s ease-in-out infinite;
 }
 
 @keyframes firefly {
-  0%, 100% { 
-    opacity: 0; 
-    transform: translate(0, 0) scale(0.5);
-  }
-  25% { 
-    opacity: 1; 
-    transform: translate(10px, -15px) scale(1);
-  }
-  50% { 
-    opacity: 0.7; 
-    transform: translate(-5px, -25px) scale(0.8);
-  }
-  75% { 
-    opacity: 1; 
-    transform: translate(15px, -10px) scale(1.2);
-  }
+  0%, 100% { opacity: 0; transform: scale(0.5); }
+  25% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+  75% { opacity: 1; transform: scale(1.2); }
+}
+
+/* Birds */
+.bird {
+  position: absolute;
+  width: 12px;
+  height: 6px;
+  animation: bird-fly 8s ease-in-out infinite;
+}
+
+.bird::before, .bird::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 6px;
+  border: 2px solid rgba(255,255,255,0.6);
+  border-radius: 50% 50% 0 0;
+  border-bottom: none;
+}
+
+.bird::before { left: 0; animation: wing-flap 0.3s ease-in-out infinite; }
+.bird::after { right: 0; animation: wing-flap 0.3s ease-in-out infinite 0.15s; }
+
+@keyframes bird-fly {
+  0%, 100% { transform: translateX(0) translateY(0); }
+  50% { transform: translateX(30px) translateY(10px); }
+}
+
+@keyframes wing-flap {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-20deg); }
 }
 
 .hint {
