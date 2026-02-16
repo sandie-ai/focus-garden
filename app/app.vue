@@ -37,6 +37,7 @@ const audioRef = ref<HTMLAudioElement | null>(null)
 const audioPlaying = ref(false)
 const newlyPlanted = ref<number[]>([])
 const showSparkle = ref(false)
+const showInputs = ref(false)
 
 const mmss = computed(() => {
   const m = Math.floor(secondsLeft.value / 60).toString().padStart(2, '0')
@@ -315,16 +316,22 @@ onMounted(() => {
         <button @click="applyPreset(90, 20)">90/20</button>
       </div>
 
-      <div class="inputs">
-        <label>
-          Focus
-          <input v-model.number="focusMinutes" type="number" min="5" max="180" />
-        </label>
-        <label>
-          Break
-          <input v-model.number="breakMinutes" type="number" min="1" max="60" />
-        </label>
-      </div>
+      <button class="more-options-btn" @click="showInputs = !showInputs">
+        ⚙️ More
+      </button>
+
+      <transition name="inputs-toggle">
+        <div v-if="showInputs" class="inputs">
+          <label>
+            Focus
+            <input v-model.number="focusMinutes" type="number" min="5" max="180" />
+          </label>
+          <label>
+            Break
+            <input v-model.number="breakMinutes" type="number" min="1" max="60" />
+          </label>
+        </div>
+      </transition>
 
       <div class="audio-box">
         <label for="station">🎵 Ambiance</label>
@@ -769,7 +776,23 @@ button:hover {
   margin-top: 1rem;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.8rem;
+  row-gap: 0.8rem;
+  column-gap: 1.25rem;
+}
+
+.more-options-btn {
+  margin-top: 0.5rem;
+}
+
+.inputs-toggle-enter-active,
+.inputs-toggle-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.inputs-toggle-enter-from,
+.inputs-toggle-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
 }
 
 label {
