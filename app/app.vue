@@ -772,6 +772,27 @@ onBeforeUnmount(() => {
             )}`,
           }"
         >
+          <div v-if="running" class="timer-pixel-cat" aria-hidden="true">
+            <div class="timer-pixel-cat__path">
+              <div class="timer-pixel-cat__facing">
+                <div class="timer-pixel-cat__sprite">
+                  <span class="timer-pixel-cat__shadow" />
+                  <span class="timer-pixel-cat__tail" />
+                  <span class="timer-pixel-cat__body">
+                    <span class="timer-pixel-cat__ear timer-pixel-cat__ear--left" />
+                    <span class="timer-pixel-cat__ear timer-pixel-cat__ear--right" />
+                    <span class="timer-pixel-cat__face">
+                      <span class="timer-pixel-cat__eye timer-pixel-cat__eye--left" />
+                      <span class="timer-pixel-cat__eye timer-pixel-cat__eye--right" />
+                      <span class="timer-pixel-cat__mouth" />
+                    </span>
+                    <span class="timer-pixel-cat__paw timer-pixel-cat__paw--left" />
+                    <span class="timer-pixel-cat__paw timer-pixel-cat__paw--right" />
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
           <p :key="`tick-${mmss}`" class="timer-display">{{ mmss }}</p>
           <div class="timer-track pixel-frame-inset">
             <div class="timer-fill" />
@@ -1263,6 +1284,132 @@ h1 {
 
 .timer-shell.minute-mark::before {
   animation: minute-pop 0.75s steps(6);
+}
+
+.timer-pixel-cat {
+  position: absolute;
+  left: 50%;
+  top: 54%;
+  width: 0;
+  height: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.timer-pixel-cat__path {
+  animation: timer-cat-path 7.6s steps(38) infinite;
+}
+
+.timer-pixel-cat__facing {
+  animation: timer-cat-flip 7.6s steps(1) infinite;
+  transform-origin: center center;
+}
+
+.timer-pixel-cat__sprite {
+  position: relative;
+  width: 32px;
+  height: 24px;
+  animation: timer-cat-step 0.58s steps(2) infinite;
+}
+
+.timer-pixel-cat__shadow {
+  position: absolute;
+  left: 7px;
+  bottom: 0;
+  width: 18px;
+  height: 4px;
+  background: rgba(45, 42, 74, 0.35);
+  animation: timer-cat-shadow 0.58s steps(2) infinite;
+}
+
+.timer-pixel-cat__tail {
+  position: absolute;
+  right: 2px;
+  bottom: 8px;
+  width: 12px;
+  height: 8px;
+  border-top: 3px solid #6f5678;
+  border-right: 2px solid #6f5678;
+  transform-origin: left bottom;
+  animation: tail-wiggle 1.6s steps(4) infinite;
+}
+
+.timer-pixel-cat__body {
+  position: absolute;
+  left: 6px;
+  bottom: 3px;
+  width: 18px;
+  height: 14px;
+  background: #c6a18b;
+  box-shadow: inset 2px 2px 0 rgba(255, 234, 213, 0.55), 2px 2px 0 #6f5678;
+}
+
+.timer-pixel-cat__ear {
+  position: absolute;
+  top: -5px;
+  width: 6px;
+  height: 6px;
+  background: #b88d74;
+}
+
+.timer-pixel-cat__ear--left {
+  left: 0;
+  clip-path: polygon(0 100%, 100% 100%, 0 0);
+}
+
+.timer-pixel-cat__ear--right {
+  right: 0;
+  clip-path: polygon(0 100%, 100% 100%, 100% 0);
+}
+
+.timer-pixel-cat__face {
+  position: absolute;
+  left: 3px;
+  top: 4px;
+  width: 12px;
+  height: 7px;
+}
+
+.timer-pixel-cat__eye {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 2px;
+  background: #2d2a4a;
+  animation: cat-blink 3.8s steps(2) infinite;
+}
+
+.timer-pixel-cat__eye--left {
+  left: 1px;
+}
+
+.timer-pixel-cat__eye--right {
+  right: 1px;
+}
+
+.timer-pixel-cat__mouth {
+  position: absolute;
+  left: 4px;
+  top: 3px;
+  width: 3px;
+  height: 2px;
+  border-bottom: 2px solid #7d4f43;
+}
+
+.timer-pixel-cat__paw {
+  position: absolute;
+  bottom: -3px;
+  width: 5px;
+  height: 4px;
+  background: #a97e69;
+}
+
+.timer-pixel-cat__paw--left {
+  left: 2px;
+}
+
+.timer-pixel-cat__paw--right {
+  right: 2px;
 }
 
 .timer-display {
@@ -2130,6 +2277,32 @@ select {
   60% { transform: translateY(0); }
   80% { transform: translateY(-6px); }
   100% { transform: translateY(0); }
+}
+
+@keyframes timer-cat-path {
+  0% { transform: translate(-58px, -26px); }
+  16% { transform: translate(-22px, -31px); }
+  33% { transform: translate(44px, -24px); }
+  50% { transform: translate(56px, 6px); }
+  68% { transform: translate(24px, 22px); }
+  84% { transform: translate(-42px, 18px); }
+  100% { transform: translate(-58px, -26px); }
+}
+
+@keyframes timer-cat-flip {
+  0%, 46% { transform: scaleX(1); }
+  47%, 94% { transform: scaleX(-1); }
+  95%, 100% { transform: scaleX(1); }
+}
+
+@keyframes timer-cat-step {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes timer-cat-shadow {
+  0%, 100% { opacity: 0.35; transform: scaleX(1); }
+  50% { opacity: 0.24; transform: scaleX(0.85); }
 }
 
 @keyframes timer-tick {
