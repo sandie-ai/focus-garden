@@ -731,118 +731,127 @@ onBeforeUnmount(() => {
 <template>
   <NuxtRouteAnnouncer />
   <main class="app" :data-phase="dayPhase">
-    <div class="ambient ambient-one" />
-    <div class="ambient ambient-two" />
-
-    <header class="topbar">
-      <div class="brand-mark">
-        <span class="brand-icon">🌿</span>
+    <header class="topbar pixel-panel">
+      <div class="brand">
+        <span class="brand-icon">[ ]</span>
         <div>
-          <p class="brand-title">Focus Garden</p>
-          <p class="brand-subtitle">Cozy focus, one session at a time</p>
+          <p class="brand-title">FOCUS GARDEN</p>
+          <p class="brand-subtitle">cozy retro focus sim</p>
         </div>
       </div>
-      <div class="live-pill">
-        <span class="dot" :class="{ running }" />
-        {{ running ? 'Session Running' : 'Ready to Bloom' }}
+      <div class="status-box" :class="{ running }">
+        <span class="status-led" />
+        <span>{{ running ? 'session active' : 'waiting at camp' }}</span>
       </div>
     </header>
 
     <section class="workspace">
-      <article class="panel timer-panel">
+      <article class="pixel-panel timer-panel">
         <div class="mode-row">
-          <button class="mode-chip" :class="{ active: mode === 'focus' }" @click="setMode('focus')">Focus</button>
-          <button class="mode-chip" :class="{ active: mode === 'break' }" @click="setMode('break')">Break</button>
+          <button class="pixel-btn mode-btn" :class="{ active: mode === 'focus' }" @click="setMode('focus')">FOCUS</button>
+          <button class="pixel-btn mode-btn" :class="{ active: mode === 'break' }" @click="setMode('break')">BREAK</button>
         </div>
 
         <h1>{{ modeTitle }}</h1>
         <p class="mode-hint">{{ modeHint }}</p>
 
-        <div class="timer-shell">
-          <div class="timer-ring" />
-          <div class="timer-display">{{ mmss }}</div>
+        <div class="timer-shell pixel-frame">
+          <p class="timer-display">{{ mmss }}</p>
+          <div class="timer-track pixel-frame-inset">
+            <div
+              class="timer-fill"
+              :style="{
+                width: `${Math.max(
+                  0,
+                  Math.min(
+                    100,
+                    Math.round((((mode === 'focus' ? focusMinutes : breakMinutes) * 60 - secondsLeft) / Math.max(1, (mode === 'focus' ? focusMinutes : breakMinutes) * 60)) * 100)
+                  )
+                )}%`,
+              }"
+            />
+          </div>
         </div>
 
         <div class="controls">
-          <button class="btn btn-primary" @click="toggleTimer">{{ running ? 'Pause' : 'Start' }}</button>
-          <button class="btn" @click="resetTimer">Reset</button>
-          <button class="btn" @click="setMode(mode === 'focus' ? 'break' : 'focus')">Switch</button>
+          <button class="pixel-btn primary" @click="toggleTimer">{{ running ? 'PAUSE' : 'START' }}</button>
+          <button class="pixel-btn" @click="resetTimer">RESET</button>
+          <button class="pixel-btn" @click="setMode(mode === 'focus' ? 'break' : 'focus')">SWITCH</button>
         </div>
 
         <div class="preset-row">
-          <button class="chip" @click="applyPreset(25, 5)">25 / 5</button>
-          <button class="chip" @click="applyPreset(50, 10)">50 / 10</button>
-          <button class="chip" @click="applyPreset(90, 20)">90 / 20</button>
-          <button class="chip" @click="showInputs = !showInputs">Custom</button>
+          <button class="pixel-btn small" @click="applyPreset(25, 5)">25/5</button>
+          <button class="pixel-btn small" @click="applyPreset(50, 10)">50/10</button>
+          <button class="pixel-btn small" @click="applyPreset(90, 20)">90/20</button>
+          <button class="pixel-btn small" @click="showInputs = !showInputs">CUSTOM</button>
         </div>
 
-        <transition name="expand">
-          <div v-if="showInputs" class="inputs">
+        <transition name="drop">
+          <div v-if="showInputs" class="inputs pixel-frame">
             <label>
-              Focus Minutes
+              Focus Min
               <input v-model.number="focusMinutes" type="number" min="5" max="180">
             </label>
             <label>
-              Break Minutes
+              Break Min
               <input v-model.number="breakMinutes" type="number" min="1" max="60">
             </label>
           </div>
         </transition>
 
-        <div class="audio-box">
-          <label for="station">Ambience</label>
+        <div class="audio-box pixel-frame">
+          <label for="station">RADIO</label>
           <select id="station" v-model="selectedStation">
             <option v-for="station in lofiStations" :key="station.url" :value="station.url">
               {{ station.name }}
             </option>
           </select>
-          <button class="btn btn-audio" @click="toggleAudio">{{ audioPlaying ? 'Stop Audio' : 'Play Audio' }}</button>
+          <button class="pixel-btn primary" @click="toggleAudio">{{ audioPlaying ? 'STOP AUDIO' : 'PLAY AUDIO' }}</button>
           <audio ref="audioRef" :src="selectedStation" preload="none" loop />
         </div>
       </article>
 
-      <article class="panel garden-panel">
+      <article class="pixel-panel garden-panel">
         <div class="stats-ribbon">
-          <div class="stat-card">
-            <span class="stat-value">{{ garden.totalSessions }}</span>
-            <span class="stat-label">Total Sessions</span>
+          <div class="stat-card pixel-frame">
+            <span class="label">TOTAL</span>
+            <strong>{{ garden.totalSessions }}</strong>
           </div>
-          <div class="stat-card">
-            <span class="stat-value">{{ garden.sessionsToday }}</span>
-            <span class="stat-label">Today</span>
+          <div class="stat-card pixel-frame">
+            <span class="label">TODAY</span>
+            <strong>{{ garden.sessionsToday }}</strong>
           </div>
-          <div class="stat-card">
-            <span class="stat-value">{{ garden.streakDays }}</span>
-            <span class="stat-label">Streak Days</span>
+          <div class="stat-card pixel-frame">
+            <span class="label">STREAK</span>
+            <strong>{{ garden.streakDays }}</strong>
           </div>
         </div>
 
-        <div class="progress-box">
-          <div class="progress-labels">
-            <span>Garden Stage {{ gardenStage }} / 4</span>
-            <span>{{ progressToNext }}% to next stage</span>
+        <div class="progress-box pixel-frame">
+          <div class="progress-head">
+            <span>Stage {{ gardenStage }}/4</span>
+            <span>{{ progressToNext }}%</span>
           </div>
-          <div class="progress-track">
+          <div class="progress-track pixel-frame-inset">
             <div class="progress-fill" :style="{ width: `${progressToNext}%` }" />
           </div>
         </div>
 
-        <div class="garden-canvas">
+        <div class="garden-canvas pixel-frame">
           <div class="sky" />
-          <div class="sun" :class="dayPhase" />
-          <div class="horizon" />
+          <div class="stars">
+            <span v-for="i in 40" :key="`s-${i}`" class="star" :style="{ left: `${(i * 17 + 9) % 100}%`, top: `${(i * 13 + 7) % 52}%` }" />
+          </div>
+          <div class="moon" />
+          <div class="cloud cloud-a" />
+          <div class="cloud cloud-b" />
+          <div class="fireflies">
+            <span v-for="i in 10" :key="`f-${i}`" class="firefly" :style="{ left: `${8 + i * 9}%`, animationDelay: `${i * 0.3}s` }" />
+          </div>
           <div class="ground" />
 
-          <div class="fireflies">
-            <span v-for="i in 8" :key="i" class="firefly" :style="{
-              left: `${10 + i * 11}%`,
-              animationDelay: `${i * 0.4}s`
-            }" />
-          </div>
-
-          <div v-if="garden.totalSessions === 0" class="empty-garden">
-            <div class="pot">🪴</div>
-            <p>Start a focus session to grow your first bloom.</p>
+          <div v-if="garden.totalSessions === 0" class="empty-garden pixel-frame">
+            <p>PRESS START TO PLANT YOUR FIRST SPROUT.</p>
           </div>
 
           <template v-else>
@@ -854,61 +863,49 @@ onBeforeUnmount(() => {
               :style="plant.style"
             >
               <div class="stem" :style="{ '--hue': plant.hue }" />
-              <div class="bloom">{{ plant.emoji }}</div>
-              <div class="plant-glow" :style="{ '--hue': plant.hue }" />
+              <div class="leaf leaf-left" :style="{ '--hue': plant.hue }" />
+              <div class="leaf leaf-right" :style="{ '--hue': plant.hue }" />
+              <div class="flower-core" />
+              <div class="petal p1" :style="{ '--hue': plant.hue }" />
+              <div class="petal p2" :style="{ '--hue': plant.hue }" />
+              <div class="petal p3" :style="{ '--hue': plant.hue }" />
+              <div class="petal p4" :style="{ '--hue': plant.hue }" />
             </div>
           </template>
 
           <transition name="sparkle">
             <div v-if="showSparkle" class="sparkle-overlay">
-              <span v-for="i in 24" :key="i" class="spark" :style="{
-                left: `${(i * 17 + 12) % 100}%`,
-                top: `${20 + (i * 13) % 60}%`,
-                animationDelay: `${i * 0.04}s`
-              }" />
+              <span
+                v-for="i in 24"
+                :key="`p-${i}`"
+                class="spark"
+                :style="{ left: `${(i * 17 + 12) % 100}%`, top: `${20 + (i * 11) % 56}%`, animationDelay: `${i * 0.04}s` }"
+              />
             </div>
           </transition>
         </div>
 
-        <div class="activity-box">
+        <div class="activity-box pixel-frame">
           <div class="activity-tabs">
-            <button class="tab" :class="{ active: activeActivityTab === 'stats' }" @click="activeActivityTab = 'stats'">Stats</button>
-            <button class="tab" :class="{ active: activeActivityTab === 'history' }" @click="activeActivityTab = 'history'">History</button>
+            <button class="pixel-btn small" :class="{ active: activeActivityTab === 'stats' }" @click="activeActivityTab = 'stats'">STATS</button>
+            <button class="pixel-btn small" :class="{ active: activeActivityTab === 'history' }" @click="activeActivityTab = 'history'">HISTORY</button>
           </div>
 
           <div v-if="activeActivityTab === 'stats'" class="stats-panel">
             <div class="mini-grid">
-              <div class="mini-stat">
-                <span>This Week</span>
-                <strong>{{ weeklyStats.thisWeek }}</strong>
-              </div>
-              <div class="mini-stat">
-                <span>Last Week</span>
-                <strong>{{ weeklyStats.lastWeek }}</strong>
-              </div>
-              <div class="mini-stat">
-                <span>This Month</span>
-                <strong>{{ monthlyStats.thisMonth }}</strong>
-              </div>
-              <div class="mini-stat">
-                <span>Last Month</span>
-                <strong>{{ monthlyStats.lastMonth }}</strong>
-              </div>
-              <div class="mini-stat">
-                <span>Best Streak</span>
-                <strong>{{ bestStreakFromHistory }}</strong>
-              </div>
-              <div class="mini-stat">
-                <span>Unlocked Plants</span>
-                <strong>{{ unlockedPlants.length }}</strong>
-              </div>
+              <div class="mini-stat pixel-frame"><span>This Week</span><strong>{{ weeklyStats.thisWeek }}</strong></div>
+              <div class="mini-stat pixel-frame"><span>Last Week</span><strong>{{ weeklyStats.lastWeek }}</strong></div>
+              <div class="mini-stat pixel-frame"><span>This Month</span><strong>{{ monthlyStats.thisMonth }}</strong></div>
+              <div class="mini-stat pixel-frame"><span>Last Month</span><strong>{{ monthlyStats.lastMonth }}</strong></div>
+              <div class="mini-stat pixel-frame"><span>Best Streak</span><strong>{{ bestStreakFromHistory }}</strong></div>
+              <div class="mini-stat pixel-frame"><span>Unlocked</span><strong>{{ unlockedPlants.length }}</strong></div>
             </div>
 
-            <div class="streak-chart">
-              <p>Last 10 Days</p>
+            <div class="streak-chart pixel-frame">
+              <p>LAST 10 DAYS</p>
               <div class="streak-bars">
                 <div v-for="day in streakHistory" :key="day.day" class="streak-day">
-                  <div class="bar" :class="{ active: day.active }" :style="{ height: `${Math.max(16, day.count * 16)}px` }" />
+                  <div class="bar" :class="{ active: day.active }" :style="{ height: `${Math.max(12, day.count * 12)}px` }" />
                   <span>{{ day.day }}</span>
                 </div>
               </div>
@@ -916,11 +913,12 @@ onBeforeUnmount(() => {
           </div>
 
           <div v-else class="history-panel">
-            <p v-if="recentHistory.length === 0" class="history-empty">No sessions recorded yet.</p>
+            <p v-if="recentHistory.length === 0" class="history-empty">NO SESSIONS YET.</p>
             <ul v-else class="history-list">
-              <li v-for="entry in recentHistory" :key="entry.id" class="history-item">
+              <li v-for="entry in recentHistory" :key="entry.id" class="history-item pixel-frame">
+                <span class="pixel-check" :class="{ checked: entry.sessionType === 'focus' }" />
                 <span class="badge" :class="entry.sessionType">{{ entry.sessionType }}</span>
-                <span class="duration">{{ entry.durationMinutes }} min</span>
+                <span class="duration">{{ entry.durationMinutes }} MIN</span>
                 <span class="time">{{ formatHistoryTime(entry.completedAt) }}</span>
               </li>
             </ul>
@@ -932,555 +930,463 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Manrope:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
 
 :root {
-  --cream-1: #fff3dd;
-  --cream-2: #ffd9a7;
-  --amber-1: #f6a13a;
-  --amber-2: #d6721f;
-  --earth-1: #7a421a;
-  --earth-2: #4f2a12;
-  --olive-1: #b2c57c;
-  --leaf-1: #6f9148;
+  --night-0: #0f0f23;
+  --night-1: #1a1a2e;
+  --ui-0: #2d2d44;
+  --ui-1: #3d3d5c;
+  --cream: #f5f5dc;
+  --amber: #ffd93d;
+  --amber-2: #ffb347;
+  --green-0: #4ade80;
+  --green-1: #22c55e;
+  --ink: #101018;
 }
 
 * {
   box-sizing: border-box;
+  image-rendering: pixelated;
 }
 
 .app {
   min-height: 100vh;
-  padding: 1rem;
-  color: #fff8ed;
-  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  padding: 14px;
+  color: var(--cream);
+  font-family: 'VT323', 'Courier New', monospace;
+  background: var(--night-0);
   position: relative;
   overflow: hidden;
-  background: radial-gradient(120% 120% at 20% 10%, #ffcb7f 0%, #f49a4d 36%, #9d4f1f 74%, #46210f 100%);
 }
 
-.app[data-phase='sunset'] {
-  background: radial-gradient(130% 130% at 50% 0%, #ffd8a6 0%, #f4a65a 35%, #ad5f2b 68%, #4f2813 100%);
-}
-
-.app[data-phase='night'] {
-  background: radial-gradient(130% 130% at 50% 0%, #f5bf87 0%, #a25d30 40%, #4f2a1a 70%, #2a1711 100%);
-}
-
-.ambient {
+.app::before {
+  content: '';
   position: absolute;
-  border-radius: 999px;
-  filter: blur(35px);
+  inset: 0;
   pointer-events: none;
+  background-image:
+    linear-gradient(to bottom, transparent 96%, rgba(255, 255, 255, 0.03) 96%),
+    linear-gradient(to right, transparent 96%, rgba(255, 255, 255, 0.03) 96%);
+  background-size: 4px 4px;
 }
 
-.ambient-one {
-  width: 340px;
-  height: 340px;
-  top: -120px;
-  left: -80px;
-  background: rgba(255, 199, 122, 0.35);
-  animation: drift-a 9s ease-in-out infinite;
+.topbar,
+.workspace,
+.timer-panel,
+.garden-panel {
+  position: relative;
+  z-index: 1;
 }
 
-.ambient-two {
-  width: 420px;
-  height: 420px;
-  right: -120px;
-  bottom: -180px;
-  background: rgba(255, 144, 59, 0.26);
-  animation: drift-b 11s ease-in-out infinite;
+.pixel-panel {
+  border: 3px solid #08080f;
+  background: var(--ui-0);
+  box-shadow: 4px 4px 0 #08080f;
 }
 
-@keyframes drift-a {
-  0%,
-  100% { transform: translate(0, 0); }
-  50% { transform: translate(22px, 12px); }
+.pixel-frame {
+  border: 2px solid #11111a;
+  background: var(--ui-1);
+  box-shadow: inset -2px -2px 0 rgba(0, 0, 0, 0.35), inset 2px 2px 0 rgba(255, 255, 255, 0.08);
 }
 
-@keyframes drift-b {
-  0%,
-  100% { transform: translate(0, 0); }
-  50% { transform: translate(-20px, -14px); }
+.pixel-frame-inset {
+  border: 2px solid #11111a;
+  background: #232339;
+  box-shadow: inset 2px 2px 0 rgba(255, 255, 255, 0.06);
 }
 
 .topbar {
-  max-width: 1180px;
-  margin: 0 auto 1rem;
+  max-width: 1200px;
+  margin: 0 auto 12px;
+  padding: 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  position: relative;
-  z-index: 2;
+  gap: 12px;
 }
 
-.brand-mark {
+.brand {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 10px;
 }
 
 .brand-icon {
-  width: 46px;
-  height: 46px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.4rem;
-  border-radius: 14px;
-  background: linear-gradient(145deg, rgba(255, 214, 151, 0.48), rgba(232, 137, 64, 0.28));
-  border: 1px solid rgba(255, 240, 214, 0.36);
-  box-shadow: 0 10px 24px rgba(69, 29, 8, 0.33);
+  font-family: 'Press Start 2P', monospace;
+  color: var(--green-0);
+  font-size: 14px;
 }
 
 .brand-title {
   margin: 0;
-  font-family: 'Fraunces', Georgia, serif;
-  font-size: 1.28rem;
-  letter-spacing: 0.2px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 12px;
+  letter-spacing: 1px;
 }
 
 .brand-subtitle {
-  margin: 0.1rem 0 0;
-  color: rgba(255, 242, 225, 0.84);
-  font-size: 0.82rem;
+  margin: 4px 0 0;
+  font-size: 24px;
+  color: #c8c7aa;
 }
 
-.live-pill {
-  display: inline-flex;
+.status-box {
+  display: flex;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.48rem 0.78rem;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  background: rgba(66, 31, 13, 0.4);
-  border: 1px solid rgba(255, 216, 173, 0.38);
+  gap: 8px;
+  padding: 6px 10px;
+  border: 2px solid #11111a;
+  background: #26263d;
+  font-size: 22px;
+  text-transform: uppercase;
 }
 
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: #ffc47b;
+.status-led {
+  width: 10px;
+  height: 10px;
+  background: #6f6f84;
 }
 
-.dot.running {
-  background: #ffe6a9;
-  box-shadow: 0 0 12px rgba(255, 224, 135, 0.9);
-  animation: pulse-dot 1.4s ease-in-out infinite;
-}
-
-@keyframes pulse-dot {
-  0%,
-  100% { transform: scale(1); opacity: 0.75; }
-  50% { transform: scale(1.25); opacity: 1; }
+.status-box.running .status-led {
+  background: var(--amber);
+  animation: blink 1s steps(2) infinite;
 }
 
 .workspace {
-  max-width: 1180px;
+  max-width: 1200px;
   margin: 0 auto;
-  position: relative;
-  z-index: 2;
   display: grid;
-  gap: 1rem;
+  grid-template-columns: 360px 1fr;
+  gap: 12px;
 }
 
-.panel {
-  border-radius: 28px;
-  border: 1px solid rgba(255, 220, 183, 0.2);
-  background: linear-gradient(160deg, rgba(101, 51, 21, 0.53), rgba(53, 26, 13, 0.62));
-  box-shadow: 0 18px 42px rgba(34, 13, 6, 0.35), inset 0 1px 0 rgba(255, 237, 206, 0.16);
-  backdrop-filter: blur(8px);
-}
-
-.timer-panel {
-  padding: 1.1rem;
-}
-
-.mode-row {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.95rem;
-}
-
-.mode-chip {
-  border: none;
-  border-radius: 999px;
-  padding: 0.42rem 0.84rem;
-  font-family: inherit;
-  font-size: 0.78rem;
-  color: #ffe9cb;
-  background: rgba(255, 222, 183, 0.12);
-  cursor: pointer;
-  transition: 0.2s ease;
-}
-
-.mode-chip.active {
-  background: linear-gradient(145deg, #ffbf62, #f08d3e);
-  color: #3e1d0f;
-  font-weight: 700;
+.timer-panel,
+.garden-panel {
+  padding: 12px;
 }
 
 h1 {
-  margin: 0;
-  font-family: 'Fraunces', Georgia, serif;
-  font-size: clamp(1.8rem, 4.6vw, 2.4rem);
-  line-height: 1.1;
+  margin: 8px 0 4px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--amber);
 }
 
 .mode-hint {
-  margin: 0.42rem 0 1rem;
-  color: rgba(255, 237, 212, 0.88);
-  font-size: 0.88rem;
+  margin: 0 0 10px;
+  font-size: 24px;
+  color: #d5d3b8;
 }
 
-.timer-shell {
-  position: relative;
-  margin: 0 auto 1rem;
-  width: min(100%, 390px);
-  border-radius: 28px;
-  padding: 1.15rem 0.9rem;
-  text-align: center;
-  background: linear-gradient(175deg, rgba(255, 227, 188, 0.1), rgba(255, 159, 80, 0.05));
-  border: 1px solid rgba(255, 227, 193, 0.24);
+.mode-row,
+.controls,
+.preset-row,
+.activity-tabs {
+  display: grid;
+  gap: 8px;
 }
 
-.timer-ring {
-  position: absolute;
-  inset: 0;
-  border-radius: 28px;
-  box-shadow: inset 0 0 24px rgba(255, 198, 125, 0.16), 0 0 34px rgba(255, 150, 68, 0.28);
-  pointer-events: none;
-}
-
-.timer-display {
-  position: relative;
-  z-index: 1;
-  font-family: 'Fraunces', Georgia, serif;
-  font-size: clamp(3rem, 13vw, 5.4rem);
-  letter-spacing: 2px;
-  color: #fff5df;
-  text-shadow: 0 0 22px rgba(255, 187, 102, 0.4), 0 8px 24px rgba(39, 15, 6, 0.45);
+.mode-row,
+.controls {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.55rem;
-  justify-content: center;
-}
-
-.btn,
-.chip,
-.tab {
-  border: 1px solid rgba(255, 225, 180, 0.22);
-  background: linear-gradient(145deg, rgba(255, 210, 159, 0.2), rgba(209, 115, 51, 0.18));
-  color: #fff4e0;
-  padding: 0.56rem 0.95rem;
-  border-radius: 14px;
-  font-family: inherit;
-  font-weight: 600;
-  font-size: 0.82rem;
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
-}
-
-.btn:hover,
-.chip:hover,
-.tab:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 20px rgba(45, 18, 8, 0.28);
-  filter: saturate(1.08);
-}
-
-.btn-primary {
-  border: none;
-  background: linear-gradient(145deg, #ffd27f 0%, #f49d47 45%, #df732a 100%);
-  color: #3f1f10;
-  font-weight: 800;
-  box-shadow: 0 12px 24px rgba(217, 112, 38, 0.42);
+  margin-top: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .preset-row {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.5rem;
-  margin-top: 0.85rem;
+  margin-top: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.pixel-btn {
+  border: 2px solid #090910;
+  background: #32324c;
+  color: var(--cream);
+  padding: 8px 6px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 #090910;
+}
+
+.pixel-btn:hover {
+  background: #404064;
+}
+
+.pixel-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 #090910;
+}
+
+.pixel-btn.active,
+.pixel-btn.primary,
+.mode-btn.active {
+  background: #5b4a1f;
+  color: #fff4b6;
+  border-color: #2d2108;
+}
+
+.pixel-btn.small {
+  font-size: 9px;
+  padding: 7px 4px;
+}
+
+.timer-shell {
+  margin-top: 8px;
+  padding: 12px;
+}
+
+.timer-display {
+  margin: 0;
+  font-family: 'Press Start 2P', monospace;
+  font-size: clamp(26px, 5vw, 44px);
+  line-height: 1;
+  text-align: center;
+  color: var(--amber);
+  text-shadow: 2px 0 0 #533d02;
+}
+
+.timer-track,
+.progress-track {
+  margin-top: 10px;
+  height: 16px;
+  overflow: hidden;
+}
+
+.timer-fill,
+.progress-fill {
+  height: 100%;
+  background: repeating-linear-gradient(90deg, var(--amber) 0 8px, var(--amber-2) 8px 16px);
+}
+
+.inputs,
+.audio-box,
+.progress-box,
+.activity-box {
+  margin-top: 10px;
+  padding: 10px;
 }
 
 .inputs {
-  margin-top: 0.9rem;
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.68rem;
+  gap: 8px;
 }
 
 label {
   display: grid;
-  gap: 0.34rem;
-  color: #ffeed7;
-  font-size: 0.77rem;
+  gap: 4px;
+  font-size: 22px;
 }
 
 input,
 select {
   width: 100%;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 216, 166, 0.28);
-  padding: 0.58rem 0.66rem;
-  color: #fff4e3;
-  background: rgba(63, 29, 14, 0.56);
-  font-family: inherit;
-  font-size: 0.9rem;
-}
-
-input:focus,
-select:focus {
-  outline: none;
-  border-color: rgba(255, 214, 134, 0.66);
-  box-shadow: 0 0 0 2px rgba(255, 187, 95, 0.22);
-}
-
-.audio-box {
-  margin-top: 0.92rem;
-  display: grid;
-  gap: 0.45rem;
-}
-
-.btn-audio {
-  justify-self: start;
-}
-
-.expand-enter-active,
-.expand-leave-active {
-  transition: all 0.22s ease;
-}
-
-.expand-enter-from,
-.expand-leave-to {
-  opacity: 0;
-  transform: translateY(-6px);
-}
-
-.garden-panel {
-  padding: 1rem;
+  border: 2px solid #0f0f18;
+  background: #1f1f31;
+  color: var(--cream);
+  padding: 6px;
+  border-radius: 0;
+  font-family: 'VT323', monospace;
+  font-size: 24px;
 }
 
 .stats-ribbon {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.5rem;
+  gap: 8px;
 }
 
 .stat-card {
-  border-radius: 16px;
-  padding: 0.7rem 0.55rem;
+  padding: 8px;
   text-align: center;
-  border: 1px solid rgba(255, 215, 171, 0.22);
-  background: linear-gradient(155deg, rgba(255, 224, 181, 0.18), rgba(171, 87, 33, 0.2));
 }
 
-.stat-value {
+.stat-card .label {
   display: block;
-  font-family: 'Fraunces', Georgia, serif;
-  font-size: 1.4rem;
-  line-height: 1;
+  font-size: 18px;
+  color: #c8c7aa;
 }
 
-.stat-label {
-  display: block;
-  margin-top: 0.18rem;
-  font-size: 0.68rem;
-  color: rgba(255, 235, 208, 0.88);
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
+.stat-card strong {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 16px;
+  color: var(--green-0);
 }
 
-.progress-box {
-  margin-top: 0.8rem;
-  border-radius: 16px;
-  padding: 0.65rem 0.72rem;
-  background: rgba(71, 31, 13, 0.5);
-  border: 1px solid rgba(255, 219, 177, 0.16);
-}
-
-.progress-labels {
+.progress-head {
   display: flex;
   justify-content: space-between;
-  gap: 0.6rem;
-  font-size: 0.72rem;
-  color: rgba(255, 239, 216, 0.9);
-}
-
-.progress-track {
-  margin-top: 0.42rem;
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(255, 232, 196, 0.14);
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #ffd17f 0%, #f59d48 50%, #df712d 100%);
-  transition: width 0.55s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 0 18px rgba(255, 187, 102, 0.5);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
 }
 
 .garden-canvas {
-  margin-top: 0.92rem;
+  margin-top: 10px;
+  min-height: 300px;
   position: relative;
-  height: 320px;
-  border-radius: 24px;
   overflow: hidden;
-  border: 1px solid rgba(255, 220, 184, 0.26);
-  background: linear-gradient(180deg, rgba(255, 214, 158, 0.7) 0%, rgba(233, 134, 63, 0.72) 52%, rgba(108, 51, 22, 0.9) 100%);
+  background: #141428;
 }
 
-.sky {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at 50% 0%, rgba(255, 239, 203, 0.6) 0%, transparent 58%);
-}
-
-.sun {
-  position: absolute;
-  top: 18px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 58px;
-  height: 58px;
-  border-radius: 999px;
-  box-shadow: 0 0 40px rgba(255, 193, 103, 0.7);
-  background: radial-gradient(circle at 35% 35%, #fff7db, #ffc267 65%, #ed8e3b 100%);
-  animation: sway-sun 7s ease-in-out infinite;
-}
-
-.sun.night {
-  background: radial-gradient(circle at 35% 35%, #fff2cd, #e7b06f 65%, #b67644 100%);
-  box-shadow: 0 0 30px rgba(241, 188, 122, 0.48);
-}
-
-@keyframes sway-sun {
-  0%,
-  100% { transform: translateX(-50%) translateY(0); }
-  50% { transform: translateX(-50%) translateY(6px); }
-}
-
-.horizon {
-  position: absolute;
-  left: -8%;
-  right: -8%;
-  bottom: 78px;
-  height: 110px;
-  border-radius: 50%;
-  background: linear-gradient(180deg, rgba(106, 55, 26, 0.26), rgba(72, 36, 17, 0.66));
-}
-
+.sky,
 .ground {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0;
-  height: 98px;
-  background: linear-gradient(180deg, #7c4622 0%, #5b3319 45%, #3a1f11 100%);
 }
 
-.fireflies {
+.sky {
+  top: 0;
+  bottom: 35%;
+  background: #101a3a;
+}
+
+.ground {
+  bottom: 0;
+  height: 35%;
+  background: #1d4a34;
+  border-top: 3px solid #2e7a53;
+}
+
+.star {
   position: absolute;
-  inset: 0;
-  pointer-events: none;
+  width: 3px;
+  height: 3px;
+  background: #f9e8a8;
+}
+
+.moon {
+  position: absolute;
+  right: 10%;
+  top: 10%;
+  width: 22px;
+  height: 22px;
+  background: #ffe08a;
+  box-shadow: -4px 4px 0 #d49c3d;
+}
+
+.cloud {
+  position: absolute;
+  width: 40px;
+  height: 12px;
+  background: #7a7a9b;
+}
+
+.cloud::before,
+.cloud::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: #7a7a9b;
+}
+
+.cloud::before {
+  left: -10px;
+  top: -4px;
+}
+
+.cloud::after {
+  right: -10px;
+  top: 4px;
+}
+
+.cloud-a {
+  left: 10%;
+  top: 18%;
+  animation: drift 16s steps(40) infinite;
+}
+
+.cloud-b {
+  left: 60%;
+  top: 24%;
+  animation: drift 22s steps(44) infinite reverse;
 }
 
 .firefly {
   position: absolute;
-  bottom: 70px;
+  top: 54%;
   width: 4px;
   height: 4px;
-  border-radius: 50%;
-  background: #ffe0a2;
-  box-shadow: 0 0 10px rgba(255, 218, 148, 0.95);
-  animation: float-firefly 5.2s ease-in-out infinite;
-}
-
-@keyframes float-firefly {
-  0%,
-  100% { transform: translate(0, 0); opacity: 0.3; }
-  40% { transform: translate(10px, -26px); opacity: 1; }
-  70% { transform: translate(-6px, -12px); opacity: 0.5; }
+  background: var(--amber);
+  animation: twinkle 1.8s steps(2) infinite;
 }
 
 .empty-garden {
   position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
+  left: 50%;
+  top: 56%;
+  transform: translate(-50%, -50%);
+  max-width: 280px;
+  padding: 8px;
   text-align: center;
-  color: rgba(255, 239, 216, 0.96);
-  padding: 0 1rem;
-}
-
-.pot {
-  font-size: 2.8rem;
-  filter: drop-shadow(0 12px 18px rgba(44, 21, 10, 0.45));
-  animation: bob 3.4s ease-in-out infinite;
-}
-
-@keyframes bob {
-  0%,
-  100% { transform: translateY(0); }
-  50% { transform: translateY(-8px); }
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  line-height: 1.6;
 }
 
 .plant {
   position: absolute;
-  z-index: 3;
-}
-
-.plant.fresh {
-  animation: pop-in 0.9s cubic-bezier(0.2, 1, 0.25, 1);
-}
-
-@keyframes pop-in {
-  from { opacity: 0; transform: translateX(-50%) scale(0.35) translateY(18px); }
-  to { opacity: 1; transform: translateX(-50%) scale(1) translateY(0); }
-}
-
-.stem {
-  margin: 0 auto;
-  width: 4px;
-  height: 38px;
-  border-radius: 6px;
-  background: linear-gradient(180deg, hsl(var(--hue), 62%, 45%), hsl(var(--hue), 45%, 31%));
-  animation: sway 4s ease-in-out infinite;
+  width: 22px;
+  height: 48px;
   transform-origin: bottom center;
 }
 
-@keyframes sway {
-  0%,
-  100% { transform: rotate(-2.5deg); }
-  50% { transform: rotate(2.5deg); }
-}
-
-.bloom {
-  margin-top: -14px;
-  font-size: 1.35rem;
-  text-align: center;
-  filter: drop-shadow(0 8px 8px rgba(44, 19, 8, 0.4));
-}
-
-.plant-glow {
+.stem {
   position: absolute;
-  top: -12px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: radial-gradient(circle, hsla(var(--hue), 88%, 68%, 0.36) 0%, transparent 70%);
+  left: 9px;
+  bottom: 2px;
+  width: 4px;
+  height: 28px;
+  background: hsl(var(--hue), 60%, 42%);
+}
+
+.leaf {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  bottom: 16px;
+  background: hsl(var(--hue), 65%, 48%);
+}
+
+.leaf-left {
+  left: 2px;
+}
+
+.leaf-right {
+  right: 2px;
+}
+
+.flower-core {
+  position: absolute;
+  left: 8px;
+  top: 2px;
+  width: 6px;
+  height: 6px;
+  background: #ffe08a;
+}
+
+.petal {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: hsl(var(--hue), 75%, 62%);
+}
+
+.p1 { left: 8px; top: -4px; }
+.p2 { left: 2px; top: 2px; }
+.p3 { left: 14px; top: 2px; }
+.p4 { left: 8px; top: 8px; }
+
+.fresh {
+  animation: pop 0.45s steps(4) 3;
 }
 
 .sparkle-overlay {
@@ -1493,240 +1399,209 @@ select:focus {
   position: absolute;
   width: 4px;
   height: 4px;
-  border-radius: 50%;
-  background: #fff5d5;
-  box-shadow: 0 0 10px rgba(255, 239, 194, 0.95);
-  animation: burst 1.2s ease-out forwards;
-}
-
-@keyframes burst {
-  0% { opacity: 0; transform: translateY(0) scale(0.2); }
-  40% { opacity: 1; transform: translateY(-16px) scale(1.2); }
-  100% { opacity: 0; transform: translateY(-30px) scale(0.6); }
-}
-
-.sparkle-enter-active,
-.sparkle-leave-active {
-  transition: opacity 0.2s ease;
-}
-
-.sparkle-enter-from,
-.sparkle-leave-to {
-  opacity: 0;
-}
-
-.activity-box {
-  margin-top: 0.9rem;
-  border-radius: 18px;
-  border: 1px solid rgba(255, 218, 172, 0.18);
-  background: rgba(72, 34, 15, 0.52);
-  padding: 0.75rem;
+  background: #ffef99;
+  animation: spark 0.8s steps(3) forwards;
 }
 
 .activity-tabs {
-  display: flex;
-  gap: 0.45rem;
-}
-
-.tab.active {
-  border-color: rgba(255, 218, 149, 0.7);
-  background: linear-gradient(145deg, rgba(255, 204, 128, 0.3), rgba(208, 101, 40, 0.28));
-}
-
-.stats-panel {
-  margin-top: 0.7rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 8px;
 }
 
 .mini-grid {
   display: grid;
+  gap: 8px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.45rem;
 }
 
 .mini-stat {
-  border-radius: 12px;
-  padding: 0.5rem 0.58rem;
-  background: rgba(255, 220, 168, 0.12);
-  border: 1px solid rgba(255, 222, 182, 0.18);
+  padding: 8px;
+  display: grid;
+  gap: 4px;
 }
 
 .mini-stat span {
-  display: block;
-  color: rgba(255, 235, 209, 0.86);
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.35px;
+  font-size: 20px;
+  color: #c8c7aa;
 }
 
 .mini-stat strong {
-  display: block;
-  margin-top: 0.16rem;
-  font-family: 'Fraunces', Georgia, serif;
-  font-size: 1.14rem;
-  line-height: 1;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 11px;
 }
 
 .streak-chart {
-  margin-top: 0.74rem;
+  margin-top: 8px;
+  padding: 8px;
 }
 
 .streak-chart p {
-  margin: 0;
-  font-size: 0.75rem;
-  color: rgba(255, 240, 220, 0.88);
+  margin: 0 0 8px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
 }
 
 .streak-bars {
-  margin-top: 0.45rem;
   display: grid;
+  gap: 6px;
   grid-template-columns: repeat(10, minmax(0, 1fr));
-  gap: 0.3rem;
   align-items: end;
 }
 
 .streak-day {
   display: grid;
-  gap: 0.18rem;
   justify-items: center;
-}
-
-.streak-day span {
-  font-size: 0.58rem;
-  color: rgba(255, 230, 191, 0.78);
+  gap: 3px;
+  font-size: 14px;
 }
 
 .bar {
   width: 100%;
-  min-height: 16px;
-  border-radius: 6px;
-  background: rgba(255, 216, 166, 0.2);
+  min-height: 12px;
+  background: #4b4b66;
+  border: 2px solid #101018;
 }
 
 .bar.active {
-  background: linear-gradient(180deg, #ffd58c 0%, #f29a4a 100%);
-}
-
-.history-panel {
-  margin-top: 0.66rem;
-}
-
-.history-empty {
-  margin: 0;
-  font-size: 0.85rem;
-  color: rgba(255, 236, 211, 0.8);
+  background: var(--green-1);
 }
 
 .history-list {
+  list-style: none;
   margin: 0;
   padding: 0;
-  list-style: none;
   display: grid;
-  gap: 0.35rem;
+  gap: 6px;
 }
 
 .history-item {
   display: grid;
-  grid-template-columns: auto auto 1fr;
+  grid-template-columns: 12px auto auto 1fr;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.45rem 0.5rem;
-  border-radius: 11px;
-  border: 1px solid rgba(255, 219, 177, 0.2);
-  background: rgba(255, 226, 186, 0.08);
+  gap: 8px;
+  padding: 7px;
+}
+
+.pixel-check {
+  width: 10px;
+  height: 10px;
+  border: 2px solid #0f0f18;
+  background: #222239;
+}
+
+.pixel-check.checked {
+  background: var(--green-0);
 }
 
 .badge {
-  text-transform: capitalize;
-  border-radius: 999px;
-  padding: 0.15rem 0.42rem;
-  font-size: 0.64rem;
-  font-weight: 700;
+  padding: 2px 6px;
+  border: 2px solid #0f0f18;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  text-transform: uppercase;
 }
 
 .badge.focus {
-  color: #4a230f;
-  background: rgba(255, 213, 136, 0.9);
+  background: #244832;
+  color: #b9ffcf;
 }
 
 .badge.break {
-  color: #fff3dd;
-  background: rgba(191, 111, 52, 0.8);
+  background: #5a4425;
+  color: #ffe5a5;
 }
 
-.duration {
-  color: rgba(255, 240, 215, 0.94);
-  font-weight: 600;
-  font-size: 0.78rem;
+.duration,
+.time,
+.history-empty {
+  font-size: 20px;
 }
 
 .time {
   justify-self: end;
-  color: rgba(255, 228, 196, 0.74);
-  font-size: 0.72rem;
+  color: #cac8af;
 }
 
-@media (max-width: 639px) {
-  .topbar {
-    flex-direction: column;
-    align-items: flex-start;
-  }
+@keyframes blink {
+  50% { opacity: 0.35; }
 }
 
-@media (min-width: 640px) {
-  .app {
-    padding: 1.4rem;
-  }
-
-  .timer-panel,
-  .garden-panel {
-    padding: 1.2rem;
-  }
-
-  .timer-shell {
-    padding: 1.6rem 1rem;
-  }
-
-  .btn,
-  .chip,
-  .tab {
-    padding: 0.64rem 1.05rem;
-    font-size: 0.86rem;
-  }
-
-  .inputs {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+@keyframes twinkle {
+  0%, 100% { opacity: 0.25; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-2px); }
 }
 
-@media (min-width: 980px) {
+@keyframes pop {
+  0% { transform: translateX(-50%) scale(0.7); }
+  100% { transform: translateX(-50%) scale(1); }
+}
+
+@keyframes spark {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: translateY(-12px) scale(0); }
+}
+
+@keyframes drift {
+  0% { transform: translateX(0); }
+  50% { transform: translateX(14px); }
+  100% { transform: translateX(0); }
+}
+
+.drop-enter-active,
+.drop-leave-active,
+.sparkle-enter-active,
+.sparkle-leave-active {
+  transition: opacity 0.2s steps(4), transform 0.2s steps(4);
+}
+
+.drop-enter-from,
+.drop-leave-to,
+.sparkle-enter-from,
+.sparkle-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+@media (max-width: 1024px) {
   .workspace {
-    grid-template-columns: minmax(320px, 0.9fr) minmax(540px, 1.35fr);
-    align-items: start;
-  }
-
-  .timer-panel {
-    position: sticky;
-    top: 1rem;
-  }
-
-  .garden-canvas {
-    height: 370px;
-  }
-
-  .stat-card {
-    padding: 0.8rem 0.6rem;
-  }
-
-  .stat-value {
-    font-size: 1.7rem;
-  }
-
-  .progress-labels {
-    font-size: 0.78rem;
+    grid-template-columns: 1fr;
   }
 
   .history-item {
-    padding: 0.5rem 0.6rem;
+    grid-template-columns: 12px auto auto;
+  }
+
+  .time {
+    grid-column: 2 / -1;
+    justify-self: start;
+  }
+}
+
+@media (max-width: 640px) {
+  .brand-title {
+    font-size: 10px;
+  }
+
+  .brand-subtitle,
+  .status-box,
+  .duration,
+  .time,
+  label,
+  input,
+  select,
+  .mini-stat span {
+    font-size: 18px;
+  }
+
+  .timer-display {
+    font-size: 30px;
+  }
+
+  .stats-ribbon,
+  .mini-grid,
+  .controls,
+  .preset-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>
