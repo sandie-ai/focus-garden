@@ -690,8 +690,8 @@ function buildTimerCatPathPoints() {
 
 function buildTimerCatStyle() {
   const points = buildTimerCatPathPoints()
-  const cycleDuration = randomBetween(5.8, 10.4)
-  const stepDuration = randomBetween(0.44, 0.76)
+  const cycleDuration = randomBetween(14.2, 24.8)
+  const stepDuration = randomBetween(1.05, 1.72)
   const tailDuration = randomBetween(1.3, 2.3)
 
   return {
