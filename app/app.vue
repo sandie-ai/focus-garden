@@ -10,7 +10,20 @@ type GardenState = {
   lastSessionDate: string | null
 }
 
+type SupabaseGardenSessionRow = {
+  total_sessions: number
+  sessions_today: number
+  streak_days: number
+  last_session_date: string | null
+}
+
 const STORAGE_KEY = 'focus-garden:v1'
+const USER_KEY = 'focus-garden:user-id'
+
+const config = useRuntimeConfig()
+const supabaseUrl = String(config.public.supabaseUrl || '').replace(/\/+$/, '')
+const supabaseToken = String(config.public.supabaseToken || '').trim()
+const supabaseEnabled = Boolean(supabaseUrl && supabaseToken)
 
 const focusMinutes = ref(25)
 const breakMinutes = ref(5)
@@ -18,6 +31,7 @@ const mode = ref<Mode>('focus')
 const secondsLeft = ref(focusMinutes.value * 60)
 const running = ref(false)
 let timer: ReturnType<typeof setInterval> | null = null
+const syncInProgress = ref(false)
 
 const garden = ref<GardenState>({
   totalSessions: 0,
@@ -125,10 +139,129 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10)
 }
 
+function getOrCreateUserId() {
+  const existing = localStorage.getItem(USER_KEY)
+  if (existing) return existing
+  const next = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `user-${Date.now()}-${Math.round(Math.random() * 1e9)}`
+  localStorage.setItem(USER_KEY, next)
+  return next
+}
+
+function sanitizeGardenState(value: unknown): GardenState {
+  const input = (value ?? {}) as Record<string, unknown>
+  const maybeDate = input.lastSessionDate
+
+  return {
+    totalSessions: Math.max(0, Number(input.totalSessions ?? 0) || 0),
+    sessionsToday: Math.max(0, Number(input.sessionsToday ?? 0) || 0),
+    streakDays: Math.max(0, Number(input.streakDays ?? 0) || 0),
+    lastSessionDate: typeof maybeDate === 'string' ? maybeDate : null,
+  }
+}
+
 function syncDailyCounters() {
   const today = todayISO()
   if (garden.value.lastSessionDate && garden.value.lastSessionDate !== today) {
     garden.value.sessionsToday = 0
+    return true
+  }
+  return false
+}
+
+function supabaseHeaders(prefer?: string) {
+  const headers: Record<string, string> = {
+    apikey: supabaseToken,
+    Authorization: `Bearer ${supabaseToken}`,
+    'Content-Type': 'application/json',
+  }
+  if (prefer) headers.Prefer = prefer
+  return headers
+}
+
+async function ensureSupabaseTable() {
+  if (!supabaseEnabled) return false
+  try {
+    await $fetch('/api/supabase/setup', {
+      method: 'POST',
+      body: { supabaseUrl },
+    })
+    return true
+  } catch (error) {
+    console.warn('[focus-garden] Supabase setup failed. Using localStorage only.', error)
+    return false
+  }
+}
+
+async function loadGardenFromSupabase() {
+  if (!supabaseEnabled) return null
+
+  const userId = getOrCreateUserId()
+  const query = new URLSearchParams({
+    select: 'total_sessions,sessions_today,streak_days,last_session_date',
+    user_id: `eq.${userId}`,
+    limit: '1',
+  })
+
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/garden_sessions?${query.toString()}`, {
+      method: 'GET',
+      headers: supabaseHeaders(),
+    })
+
+    if (!response.ok) {
+      throw new Error(`load failed with status ${response.status}`)
+    }
+
+    const rows = await response.json() as SupabaseGardenSessionRow[]
+    if (!Array.isArray(rows) || rows.length === 0) return null
+
+    const row = rows[0]
+    return sanitizeGardenState({
+      totalSessions: row.total_sessions,
+      sessionsToday: row.sessions_today,
+      streakDays: row.streak_days,
+      lastSessionDate: row.last_session_date,
+    })
+  } catch (error) {
+    console.warn('[focus-garden] Could not load Supabase state. Using localStorage fallback.', error)
+    return null
+  }
+}
+
+async function syncGardenToSupabase() {
+  if (!supabaseEnabled || syncInProgress.value) return false
+
+  syncInProgress.value = true
+  const userId = getOrCreateUserId()
+
+  const payload = {
+    user_id: userId,
+    total_sessions: garden.value.totalSessions,
+    sessions_today: garden.value.sessionsToday,
+    streak_days: garden.value.streakDays,
+    last_session_date: garden.value.lastSessionDate,
+    updated_at: new Date().toISOString(),
+  }
+
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/garden_sessions?on_conflict=user_id`, {
+      method: 'POST',
+      headers: supabaseHeaders('resolution=merge-duplicates,return=minimal'),
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+      throw new Error(`sync failed with status ${response.status}`)
+    }
+
+    return true
+  } catch (error) {
+    console.warn('[focus-garden] Supabase sync failed. localStorage remains source of truth.', error)
+    return false
+  } finally {
+    syncInProgress.value = false
   }
 }
 
@@ -184,6 +317,8 @@ function completeFocusSession() {
   }
 
   garden.value.lastSessionDate = today
+  persist()
+  void syncGardenToSupabase()
 }
 
 function onTimerDone() {
@@ -266,7 +401,9 @@ watch(selectedStation, () => {
   persist()
 })
 
-onMounted(() => {
+onMounted(async () => {
+  getOrCreateUserId()
+
   const raw = localStorage.getItem(STORAGE_KEY)
   if (raw) {
     try {
@@ -276,12 +413,21 @@ onMounted(() => {
       mode.value = data.mode ?? 'focus'
       secondsLeft.value = Number(data.secondsLeft ?? focusMinutes.value * 60)
       selectedStation.value = data.selectedStation ?? lofiStations[1].url
-      if (data.garden) garden.value = data.garden
+      if (data.garden) garden.value = sanitizeGardenState(data.garden)
     } catch {}
   }
 
-  syncDailyCounters()
+  await ensureSupabaseTable()
+  const supabaseState = await loadGardenFromSupabase()
+  if (supabaseState) {
+    garden.value = supabaseState
+  }
+
+  const dailyResetApplied = syncDailyCounters()
   persist()
+  if (dailyResetApplied) {
+    void syncGardenToSupabase()
+  }
 })
 </script>
 
