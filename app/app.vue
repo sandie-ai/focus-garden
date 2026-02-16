@@ -929,6 +929,26 @@ onBeforeUnmount(() => {
   </main>
 </template>
 
+<style>
+html,
+body,
+#__nuxt {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+}
+
+#__nuxt {
+  min-height: 100vh;
+}
+
+body {
+  background: #0f0f23;
+}
+</style>
+
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
 
