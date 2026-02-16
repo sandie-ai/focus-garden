@@ -59,14 +59,33 @@ const gardenStage = computed(() => {
 
 const plantCount = computed(() => Math.min(12, Math.floor(garden.value.totalSessions / 2) + 1))
 
+// Plant types with their display names
+const plantTypes = [
+  { id: 'flower', name: 'Flower', emoji: '🌸', stages: 4 },
+  { id: 'sunflower', name: 'Sunflower', emoji: '🌻', stages: 4 },
+  { id: 'tulip', name: 'Tulip', emoji: '🌷', stages: 4 },
+  { id: 'rose', name: 'Rose', emoji: '🌹', stages: 4 },
+  { id: 'cactus', name: 'Cactus', emoji: '🌵', stages: 4 },
+  { id: 'succulent', name: 'Succulent', emoji: '🪴', stages: 4 },
+]
+
 // Generate plants with different types
 const plants = computed(() => {
-  const types = ['flower', 'sunflower', 'tulip', 'rose', 'cactus', 'succulent']
   return Array.from({ length: plantCount.value }, (_, i) => ({
     id: i,
-    type: types[i % types.length],
+    type: plantTypes[i % plantTypes.length].id,
     style: makePlantStyle(i)
   }))
+})
+
+// Get the user's unlocked plant types based on sessions
+const unlockedPlants = computed(() => {
+  const count = garden.value.totalSessions
+  if (count === 0) return []
+  if (count < 3) return [plantTypes[0]]
+  if (count < 10) return plantTypes.slice(0, 2)
+  if (count < 20) return plantTypes.slice(0, 4)
+  return plantTypes
 })
 
 function makePlantStyle(index: number) {
@@ -335,7 +354,6 @@ onMounted(() => {
       <div class="garden-canvas">
         <!-- Sky -->
         <div class="sky">
-          <!-- Stars -->
           <template v-if="dayPhase === 'night'">
             <span v-for="i in 30" :key="i" class="star" :style="{
               left: `${(i * 37) % 100}%`,
@@ -345,17 +363,14 @@ onMounted(() => {
             }" />
           </template>
           
-          <!-- Moon -->
           <div v-if="dayPhase === 'night'" class="moon">
             <span class="moon-crater c1" />
             <span class="moon-crater c2" />
             <span class="moon-crater c3" />
           </div>
           
-          <!-- Sun -->
           <div v-if="dayPhase !== 'night'" class="sun" :class="dayPhase" />
           
-          <!-- Clouds -->
           <div class="clouds">
             <span class="cloud c1" />
             <span class="cloud c2" />
@@ -381,92 +396,107 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- Pixel Plants -->
-        <div
-          v-for="plant in plants"
-          :key="plant.id"
-          class="pixel-plant"
-          :class="{ 'newly-planted': newlyPlanted.includes(plant.id), [plant.type]: true }"
-          :style="plant.style"
-        >
-          <!-- Flower -->
-          <template v-if="plant.type === 'flower'">
-            <div class="pixel-stem" />
-            <div class="pixel-leaf leaf-l" />
-            <div class="pixel-leaf leaf-r" />
-            <div class="pixel-flower-head">
-              <span class="petal p1" />
-              <span class="petal p2" />
-              <span class="petal p3" />
-              <span class="petal p4" />
-              <span class="petal p5" />
-              <span class="petal p6" />
-              <span class="flower-center" />
+        <!-- Empty state - cute seed/sprout -->
+        <div v-if="garden.totalSessions === 0" class="empty-garden">
+          <div class="empty-pot">
+            <div class="pot" />
+            <div class="soil" />
+            <div class="seed-sprout">
+              <span class="sprout-stem" />
+              <span class="sprout-leaf leaf-1" />
+              <span class="sprout-leaf leaf-2" />
             </div>
-          </template>
-
-          <!-- Sunflower -->
-          <template v-else-if="plant.type === 'sunflower'">
-            <div class="pixel-stem" />
-            <div class="pixel-leaf leaf-l" />
-            <div class="pixel-leaf leaf-r" />
-            <div class="sunflower-head">
-              <span class="seed-row r1" />
-              <span class="seed-row r2" />
-              <span class="seed-row r3" />
-              <span class="seed-row r4" />
-              <div class="sunflower-center" />
+            <div class="sparkles">
+              <span class="sparkle s1" />
+              <span class="sparkle s2" />
+              <span class="sparkle s3" />
             </div>
-          </template>
-
-          <!-- Tulip -->
-          <template v-else-if="plant.type === 'tulip'">
-            <div class="pixel-stem" />
-            <div class="tulip-head">
-              <span class="tulip-petal p1" />
-              <span class="tulip-petal p2" />
-              <span class="tulip-petal p3" />
-            </div>
-          </template>
-
-          <!-- Rose -->
-          <template v-else-if="plant.type === 'rose'">
-            <div class="pixel-stem" />
-            <div class="pixel-leaf leaf-l" />
-            <div class="pixel-leaf leaf-r" />
-            <div class="rose-head">
-              <span class="rose-petal rp1" />
-              <span class="rose-petal rp2" />
-              <span class="rose-petal rp3" />
-              <span class="rose-petal rp4" />
-              <span class="rose-center" />
-            </div>
-          </template>
-
-          <!-- Cactus -->
-          <template v-else-if="plant.type === 'cactus'">
-            <div class="cactus-body">
-              <span class="cactus-arm arm-l" />
-              <span class="cactus-arm arm-r" />
-              <span class="cactus-top" />
-            </div>
-            <div v-if="gardenStage >= 2" class="cactus-flower" />
-          </template>
-
-          <!-- Succulent -->
-          <template v-else-if="plant.type === 'succulent'">
-            <div class="succulent-base">
-              <span class="succulent-leaf sl1" />
-              <span class="succulent-leaf sl2" />
-              <span class="succulent-leaf sl3" />
-              <span class="succulent-leaf sl4" />
-              <span class="succulent-leaf sl5" />
-              <span class="succulent-leaf sl6" />
-            </div>
-          </template>
+          </div>
+          <p class="empty-text">Plant your first seed! 🌱</p>
         </div>
 
-        <!-- Fireflies -->
+        <!-- Pixel Plants -->
+        <template v-else>
+          <div
+            v-for="plant in plants"
+            :key="plant.id"
+            class="pixel-plant"
+            :class="{ 'newly-planted': newlyPlanted.includes(plant.id), [plant.type]: true }"
+            :style="plant.style"
+          >
+            <!-- Flower -->
+            <template v-if="plant.type === 'flower'">
+              <div class="pixel-stem" />
+              <div class="pixel-leaf leaf-l" />
+              <div class="pixel-leaf leaf-r" />
+              <div class="pixel-flower-head">
+                <span class="petal p1" />
+                <span class="petal p2" />
+                <span class="petal p3" />
+                <span class="petal p4" />
+                <span class="petal p5" />
+                <span class="petal p6" />
+                <span class="flower-center" />
+              </div>
+            </template>
+
+            <template v-else-if="plant.type === 'sunflower'">
+              <div class="pixel-stem" />
+              <div class="pixel-leaf leaf-l" />
+              <div class="pixel-leaf leaf-r" />
+              <div class="sunflower-head">
+                <span class="seed-row r1" />
+                <span class="seed-row r2" />
+                <span class="seed-row r3" />
+                <span class="seed-row r4" />
+                <div class="sunflower-center" />
+              </div>
+            </template>
+
+            <template v-else-if="plant.type === 'tulip'">
+              <div class="pixel-stem" />
+              <div class="tulip-head">
+                <span class="tulip-petal p1" />
+                <span class="tulip-petal p2" />
+                <span class="tulip-petal p3" />
+              </div>
+            </template>
+
+            <template v-else-if="plant.type === 'rose'">
+              <div class="pixel-stem" />
+              <div class="pixel-leaf leaf-l" />
+              <div class="pixel-leaf leaf-r" />
+              <div class="rose-head">
+                <span class="rose-petal rp1" />
+                <span class="rose-petal rp2" />
+                <span class="rose-petal rp3" />
+                <span class="rose-petal rp4" />
+                <span class="rose-center" />
+              </div>
+            </template>
+
+            <template v-else-if="plant.type === 'cactus'">
+              <div class="cactus-body">
+                <span class="cactus-arm arm-l" />
+                <span class="cactus-arm arm-r" />
+                <span class="cactus-top" />
+              </div>
+              <div v-if="gardenStage >= 2" class="cactus-flower" />
+            </template>
+
+            <template v-else-if="plant.type === 'succulent'">
+              <div class="succulent-base">
+                <span class="succulent-leaf sl1" />
+                <span class="succulent-leaf sl2" />
+                <span class="succulent-leaf sl3" />
+                <span class="succulent-leaf sl4" />
+                <span class="succulent-leaf sl5" />
+                <span class="succulent-leaf sl6" />
+              </div>
+            </template>
+          </div>
+        </template>
+
         <template v-if="dayPhase !== 'day'">
           <span v-for="i in 12" :key="i" class="firefly" :style="{
             left: `${(i * 23) % 100}%`,
@@ -475,7 +505,6 @@ onMounted(() => {
           }" />
         </template>
 
-        <!-- Birds for day -->
         <template v-if="dayPhase === 'day'">
           <span v-for="i in 3" :key="i" class="bird" :style="{
             left: `${20 + i * 25}%`,
@@ -485,28 +514,57 @@ onMounted(() => {
         </template>
       </div>
 
+      <!-- Plant Evolution Showcase -->
+      <div class="plant-showcase">
+        <h3>🌱 Plant Collection</h3>
+        <p class="showcase-hint">Unlock more plants as you grow!</p>
+        <div class="plant-evolution">
+          <div 
+            v-for="plant in plantTypes" 
+            :key="plant.id"
+            class="evolution-row"
+            :class="{ locked: !unlockedPlants.find(p => p.id === plant.id) }"
+          >
+            <span class="plant-emoji">{{ plant.emoji }}</span>
+            <div class="evolution-stages">
+              <span 
+                v-for="stage in 4" 
+                :key="stage" 
+                class="stage-dot"
+                :class="{ 
+                  active: gardenStage >= stage,
+                  current: gardenStage === stage
+                }"
+              >
+                <span v-if="gardenStage >= stage" class="stage-fill" />
+              </span>
+            </div>
+            <span class="plant-name">{{ plant.name }}</span>
+            <span class="unlock-hint" v-if="!unlockedPlants.find(p => p.id === plant.id)">
+              {{ plant.id === 'sunflower' ? '3 sess' : plant.id === 'tulip' ? '10 sess' : plant.id === 'rose' ? '20 sess' : '30 sess' }}
+            </span>
+          </div>
+        </div>
+      </div>
+
       <p class="hint">Complete focus sessions to grow your garden ✨</p>
     </section>
   </main>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Press+Start+2P&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
 
 :root {
   --bg-dark: #0c1222;
-  --bg-panel: rgba(255,255,255,0.06);
   --accent-green: #22c55e;
-  --accent-glow: rgba(34,197,94,0.4);
-  --text-primary: #f0f4f8;
-  --text-secondary: #94a3b8;
 }
 
 :global(body) {
   margin: 0;
   font-family: 'Outfit', sans-serif;
   background: var(--bg-dark);
-  color: var(--text-primary);
+  color: #f0f4f8;
 }
 
 .app {
@@ -518,15 +576,9 @@ onMounted(() => {
   transition: background 0.8s ease;
 }
 
-.app[data-phase='day'] { 
-  background: linear-gradient(180deg, #1e3a5f 0%, #0f1f35 60%, #0a1425 100%);
-}
-.app[data-phase='sunset'] { 
-  background: linear-gradient(180deg, #2d1f4a 0%, #1a1435 60%, #0d0a1f 100%);
-}
-.app[data-phase='night'] { 
-  background: linear-gradient(180deg, #0a1020 0%, #040810 60%, #020408 100%);
-}
+.app[data-phase='day'] { background: linear-gradient(180deg, #1e3a5f 0%, #0f1f35 60%, #0a1425 100%); }
+.app[data-phase='sunset'] { background: linear-gradient(180deg, #2d1f4a 0%, #1a1435 60%, #0d0a1f 100%); }
+.app[data-phase='night'] { background: linear-gradient(180deg, #0a1020 0%, #040810 60%, #020408 100%); }
 
 @media (min-width: 980px) {
   .app {
@@ -558,7 +610,7 @@ onMounted(() => {
   font-weight: 600;
 }
 
-h1, h2 { margin: 0; font-weight: 800; }
+h1, h2, h3 { margin: 0; font-weight: 800; }
 
 h1 {
   font-size: 1.75rem;
@@ -568,16 +620,10 @@ h1 {
   background-clip: text;
 }
 
-h2 {
-  font-size: 1.3rem;
-  color: #e2e8f0;
-}
+h2 { font-size: 1.3rem; color: #e2e8f0; }
+h3 { font-size: 1rem; color: #e2e8f0; margin-bottom: 0.25rem; }
 
-.subtitle {
-  margin: 0.4rem 0 1rem;
-  color: #94a3b8;
-  font-size: 0.95rem;
-}
+.subtitle { margin: 0.4rem 0 1rem; color: #94a3b8; font-size: 0.95rem; }
 
 .timer-container {
   position: relative;
@@ -635,7 +681,6 @@ button {
 button:hover {
   background: linear-gradient(145deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.08) 100%);
   transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
 }
 
 .primary {
@@ -648,7 +693,6 @@ button:hover {
 
 .primary:hover {
   background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
-  box-shadow: 0 6px 28px rgba(34,197,94,0.5);
 }
 
 .inputs {
@@ -681,15 +725,9 @@ input:focus, select:focus {
   border-color: rgba(34,197,94,0.5);
 }
 
-.audio-box {
-  margin-top: 1rem;
-  display: grid;
-  gap: 0.5rem;
-}
-
+.audio-box { margin-top: 1rem; display: grid; gap: 0.5rem; }
 .audio-btn { width: fit-content; justify-self: center; }
 
-/* Stats */
 .stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -703,24 +741,10 @@ input:focus, select:focus {
   border-radius: 16px;
   padding: 0.8rem;
   text-align: center;
-  transition: transform 0.2s;
 }
 
-.stat:hover { transform: translateY(-2px); }
-
-.stat-value {
-  display: block;
-  font-size: 1.5rem;
-  font-weight: 800;
-  color: #f8fafc;
-}
-
-.stat-label {
-  color: #64748b;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
+.stat-value { display: block; font-size: 1.5rem; font-weight: 800; color: #f8fafc; }
+.stat-label { color: #64748b; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
 
 .stage-info {
   display: flex;
@@ -751,12 +775,120 @@ input:focus, select:focus {
 /* Garden Canvas */
 .garden-canvas {
   position: relative;
-  height: 320px;
+  height: 280px;
   margin-top: 1.25rem;
   border-radius: 20px;
   overflow: hidden;
   background: linear-gradient(180deg, transparent 0%, transparent 35%, #1a3a25 60%, #0d2818 100%);
   border: 1px solid rgba(255,255,255,0.12);
+}
+
+/* Empty Garden State */
+.empty-garden {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-pot {
+  position: relative;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.pot {
+  width: 50px;
+  height: 40px;
+  background: linear-gradient(180deg, #b45309 0%, #92400e 50%, #78350f 100%);
+  border-radius: 5px 5px 15px 15px;
+  position: relative;
+}
+
+.pot::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: -5px;
+  right: -5px;
+  height: 12px;
+  background: linear-gradient(180deg, #d97706 0%, #b45309 100%);
+  border-radius: 5px;
+}
+
+.soil {
+  position: absolute;
+  top: -5px;
+  left: 5px;
+  right: 5px;
+  height: 10px;
+  background: #451a03;
+  border-radius: 50%;
+}
+
+.seed-sprout {
+  position: absolute;
+  bottom: 35px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.sprout-stem {
+  display: block;
+  width: 3px;
+  height: 20px;
+  background: linear-gradient(to top, #15803d, #22c55e);
+  margin: 0 auto;
+  border-radius: 2px;
+}
+
+.sprout-leaf {
+  position: absolute;
+  width: 10px;
+  height: 8px;
+  background: #22c55e;
+  border-radius: 50% 50% 50% 50%;
+  bottom: 12px;
+}
+
+.sprout-leaf.leaf-1 { left: -6px; transform: rotate(-30deg); }
+.sprout-leaf.leaf-2 { right: -6px; transform: rotate(30deg) scaleX(-1); }
+
+.sparkles {
+  position: absolute;
+  inset: 0;
+}
+
+.sparkle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: #fef08a;
+  border-radius: 50%;
+  animation: sparkle 1.5s ease-in-out infinite;
+}
+
+.sparkle.s1 { top: -15px; left: 10px; animation-delay: 0s; }
+.sparkle.s2 { top: -10px; right: 5px; animation-delay: 0.5s; }
+.sparkle.s3 { top: -20px; right: 15px; animation-delay: 1s; }
+
+@keyframes sparkle {
+  0%, 100% { opacity: 0; transform: scale(0); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+.empty-text {
+  margin-top: 1rem;
+  color: #86efac;
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: center;
 }
 
 /* Sky */
@@ -788,7 +920,7 @@ input:focus, select:focus {
   height: 44px;
   background: radial-gradient(circle at 30% 30%, #fefce8, #fef08a);
   border-radius: 50%;
-  box-shadow: 0 0 30px rgba(254,240,138,0.6), inset -8px -8px 12px rgba(0,0,0,0.1);
+  box-shadow: 0 0 30px rgba(254,240,138,0.6);
 }
 
 .moon-crater {
@@ -855,29 +987,9 @@ input:focus, select:focus {
   border-radius: 50%;
 }
 
-.hill-1 {
-  width: 200px;
-  height: 60px;
-  background: #1a4a32;
-  left: -20px;
-  bottom: 0;
-}
-
-.hill-2 {
-  width: 180px;
-  height: 50px;
-  background: #145028;
-  right: -10px;
-  bottom: 0;
-}
-
-.hill-3 {
-  width: 150px;
-  height: 40px;
-  background: #0f3820;
-  left: 30%;
-  bottom: 0;
-}
+.hill-1 { width: 200px; height: 60px; background: #1a4a32; left: -20px; bottom: 0; }
+.hill-2 { width: 180px; height: 50px; background: #145028; right: -10px; bottom: 0; }
+.hill-3 { width: 150px; height: 40px; background: #0f3820; left: 30%; bottom: 0; }
 
 /* Ground */
 .ground {
@@ -930,7 +1042,6 @@ input:focus, select:focus {
   100% { transform: translateX(-50%) scale(1) translateY(0); opacity: 1; }
 }
 
-/* Stem */
 .pixel-stem {
   position: absolute;
   bottom: 0;
@@ -942,7 +1053,6 @@ input:focus, select:focus {
   border-radius: 2px;
 }
 
-/* Leaves */
 .pixel-leaf {
   position: absolute;
   width: 12px;
@@ -954,7 +1064,7 @@ input:focus, select:focus {
 .leaf-l { left: 0; bottom: 15px; transform: rotate(-30deg); }
 .leaf-r { right: 0; bottom: 20px; transform: rotate(30deg) scaleX(-1); }
 
-/* Flower head */
+/* Flower */
 .pixel-flower-head {
   position: absolute;
   top: 0;
@@ -1203,6 +1313,96 @@ input:focus, select:focus {
 @keyframes wing-flap {
   0%, 100% { transform: rotate(0deg); }
   50% { transform: rotate(-20deg); }
+}
+
+/* Plant Showcase */
+.plant-showcase {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: rgba(0,0,0,0.2);
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.plant-showcase h3 {
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.showcase-hint {
+  font-size: 0.8rem;
+  color: #64748b;
+  margin: 0 0 0.75rem;
+}
+
+.plant-evolution {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.evolution-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px;
+  transition: all 0.2s;
+}
+
+.evolution-row.locked {
+  opacity: 0.4;
+}
+
+.plant-emoji {
+  font-size: 1.25rem;
+  width: 28px;
+  text-align: center;
+}
+
+.evolution-stages {
+  display: flex;
+  gap: 4px;
+}
+
+.stage-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.stage-dot.active {
+  background: rgba(34,197,94,0.3);
+}
+
+.stage-fill {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, #22c55e, #4ade80);
+}
+
+.stage-dot.current .stage-fill {
+  animation: pulse-stage 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-stage {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+.plant-name {
+  flex: 1;
+  font-size: 0.85rem;
+  color: #e2e8f0;
+}
+
+.unlock-hint {
+  font-size: 0.7rem;
+  color: #64748b;
 }
 
 .hint {
