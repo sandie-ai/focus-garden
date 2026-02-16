@@ -757,22 +757,66 @@ onBeforeUnmount(() => {
 
         <div
           class="timer-shell pixel-frame"
-          :class="{ 'timer-complete': history[0]?.sessionType === 'focus' && mode === 'break' && !running }"
+          :class="{
+            running,
+            'timer-complete': history[0]?.sessionType === 'focus' && mode === 'break' && !running,
+            'minute-mark': running && secondsLeft % 60 === 0,
+          }"
+          :style="{
+            '--timer-progress': `${Math.max(
+              0,
+              Math.min(
+                100,
+                Math.round((((mode === 'focus' ? focusMinutes : breakMinutes) * 60 - secondsLeft) / Math.max(1, (mode === 'focus' ? focusMinutes : breakMinutes) * 60)) * 100)
+              )
+            )}`,
+          }"
         >
-          <p class="timer-display">{{ mmss }}</p>
-          <div class="timer-track pixel-frame-inset">
-            <div
-              class="timer-fill"
+          <div class="mobile-timer-party" aria-hidden="true">
+            <div class="timer-ring-wrap">
+              <svg class="timer-ring" viewBox="0 0 120 120">
+                <circle class="timer-ring-bg" cx="60" cy="60" r="45" />
+                <circle class="timer-ring-fill" cx="60" cy="60" r="45" />
+              </svg>
+            </div>
+            <div class="timer-owl" :class="{ alert: running }">
+              <div class="owl-ear owl-ear-left" />
+              <div class="owl-ear owl-ear-right" />
+              <div class="owl-face">
+                <span class="owl-eye owl-eye-left" />
+                <span class="owl-eye owl-eye-right" />
+                <span class="owl-beak" />
+              </div>
+              <div class="owl-wing" />
+            </div>
+            <div class="timer-buddy" :class="{ nap: mode === 'break' }">
+              <span class="buddy-eye buddy-eye-left" />
+              <span class="buddy-eye buddy-eye-right" />
+              <span class="buddy-mouth" />
+            </div>
+            <span
+              v-for="i in 12"
+              :key="`timer-spark-${i}`"
+              class="timer-spark"
               :style="{
-                width: `${Math.max(
-                  0,
-                  Math.min(
-                    100,
-                    Math.round((((mode === 'focus' ? focusMinutes : breakMinutes) * 60 - secondsLeft) / Math.max(1, (mode === 'focus' ? focusMinutes : breakMinutes) * 60)) * 100)
-                  )
-                )}%`,
+                '--left': `${8 + (i * 7) % 84}%`,
+                '--delay': `${i * 0.18}s`,
+                '--size': `${3 + (i % 3)}px`,
+                '--drift': `${(i % 2 === 0 ? -1 : 1) * (4 + (i % 4) * 2)}px`,
               }"
             />
+            <div class="timer-rewards">
+              <span class="timer-reward reward-1">🌟</span>
+              <span class="timer-reward reward-2">🌸</span>
+              <span class="timer-reward reward-3">✨</span>
+              <span class="timer-reward reward-4">🌼</span>
+              <span class="timer-reward reward-5">🍀</span>
+              <span class="timer-reward reward-6">💫</span>
+            </div>
+          </div>
+          <p :key="`tick-${mmss}`" class="timer-display">{{ mmss }}</p>
+          <div class="timer-track pixel-frame-inset">
+            <div class="timer-fill" />
           </div>
         </div>
 
@@ -1236,6 +1280,7 @@ h1 {
   margin-top: 8px;
   padding: 12px;
   position: relative;
+  --timer-progress: 0;
 }
 
 .timer-shell::after {
@@ -1250,6 +1295,18 @@ h1 {
   animation: timer-flash 0.65s steps(5);
 }
 
+.timer-shell::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.timer-shell.minute-mark::before {
+  animation: minute-pop 0.75s steps(6);
+}
+
 .timer-display {
   margin: 0;
   font-family: 'Press Start 2P', monospace;
@@ -1258,6 +1315,14 @@ h1 {
   text-align: center;
   color: var(--warm-dark);
   text-shadow: 2px 0 0 #ffe58e;
+}
+
+.timer-shell.running .timer-display {
+  animation: timer-tick 1s steps(2) infinite;
+}
+
+.mobile-timer-party {
+  display: none;
 }
 
 .timer-track,
@@ -1273,6 +1338,11 @@ h1 {
   background: repeating-linear-gradient(90deg, var(--gold) 0 8px, #ff8fa3 8px 16px);
   position: relative;
   overflow: hidden;
+}
+
+.timer-fill {
+  width: calc(var(--timer-progress) * 1%);
+  box-shadow: 0 0 8px rgba(255, 217, 61, 0.55);
 }
 
 .timer-fill::after,
@@ -2010,6 +2080,11 @@ select {
   100% { opacity: 0; background: rgba(255, 255, 224, 0); }
 }
 
+@keyframes minute-pop {
+  0% { opacity: 0.9; background: radial-gradient(circle at center, rgba(255, 245, 193, 0.75) 0%, rgba(255, 245, 193, 0) 60%); }
+  100% { opacity: 0; background: radial-gradient(circle at center, rgba(255, 245, 193, 0) 0%, rgba(255, 245, 193, 0) 60%); }
+}
+
 @keyframes stat-pop {
   0% { transform: scale(0.8); }
   70% { transform: scale(1.14); }
@@ -2084,6 +2159,37 @@ select {
   100% { transform: translateY(0); }
 }
 
+@keyframes timer-tick {
+  0%, 100% { transform: translateY(0) scale(1); text-shadow: 2px 0 0 #ffe58e; }
+  40% { transform: translateY(-1px) scale(1.02); text-shadow: 0 0 7px rgba(255, 233, 143, 0.95); }
+}
+
+@keyframes owl-watch {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes owl-blink {
+  0%, 90%, 100% { height: 4px; transform: translateY(0); }
+  92% { height: 1px; transform: translateY(2px); }
+}
+
+@keyframes buddy-hop {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes reward-pop {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-4px) scale(1.08); }
+}
+
+@keyframes timer-spark-float {
+  0% { opacity: 0; transform: translate3d(0, 0, 0) scale(0.6); }
+  25% { opacity: 0.9; }
+  100% { opacity: 0; transform: translate3d(var(--drift), -26px, 0) scale(1); }
+}
+
 .drop-enter-active,
 .drop-leave-active,
 .sparkle-enter-active,
@@ -2132,6 +2238,8 @@ select {
 
   .timer-display {
     font-size: 30px;
+    position: relative;
+    z-index: 3;
   }
 
   .stats-ribbon,
@@ -2140,5 +2248,214 @@ select {
   .preset-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .timer-shell {
+    overflow: hidden;
+    padding: 16px 12px 14px;
+  }
+
+  .mobile-timer-party {
+    display: block;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .timer-ring-wrap {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 138px;
+    height: 138px;
+    transform: translate(-50%, -55%);
+  }
+
+  .timer-ring {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+    filter: drop-shadow(0 0 6px rgba(255, 217, 61, 0.45));
+  }
+
+  .timer-ring-bg,
+  .timer-ring-fill {
+    fill: none;
+    stroke-width: 7;
+    stroke-linecap: round;
+  }
+
+  .timer-ring-bg {
+    stroke: rgba(45, 42, 74, 0.24);
+  }
+
+  .timer-ring-fill {
+    stroke: #ffd93d;
+    stroke-dasharray: 283;
+    stroke-dashoffset: calc(283 - (283 * var(--timer-progress) / 100));
+    transition: stroke-dashoffset 0.5s linear;
+    filter: drop-shadow(0 0 5px rgba(255, 217, 61, 0.85));
+  }
+
+  .timer-owl {
+    position: absolute;
+    right: 6%;
+    top: 20%;
+    width: 30px;
+    height: 36px;
+    background: #b98a62;
+    border: 2px solid var(--warm-dark);
+    box-shadow: 2px 2px 0 #7d5b43;
+    animation: owl-watch 3.8s steps(3) infinite;
+  }
+
+  .timer-owl.alert {
+    animation-duration: 2.2s;
+  }
+
+  .owl-ear {
+    position: absolute;
+    top: -8px;
+    width: 8px;
+    height: 8px;
+    background: #9a714f;
+    border: 2px solid var(--warm-dark);
+    border-bottom: 0;
+  }
+
+  .owl-ear-left {
+    left: 2px;
+    clip-path: polygon(0 100%, 100% 100%, 0 0);
+  }
+
+  .owl-ear-right {
+    right: 2px;
+    clip-path: polygon(0 100%, 100% 100%, 100% 0);
+  }
+
+  .owl-face {
+    position: absolute;
+    left: 5px;
+    top: 10px;
+    width: 20px;
+    height: 16px;
+    background: #ffedca;
+    border: 2px solid var(--warm-dark);
+  }
+
+  .owl-eye {
+    position: absolute;
+    top: 4px;
+    width: 4px;
+    height: 4px;
+    background: var(--warm-dark);
+    animation: owl-blink 4.6s steps(2) infinite;
+  }
+
+  .owl-eye-left {
+    left: 4px;
+  }
+
+  .owl-eye-right {
+    right: 4px;
+  }
+
+  .owl-beak {
+    position: absolute;
+    left: 8px;
+    top: 8px;
+    width: 0;
+    height: 0;
+    border-left: 3px solid transparent;
+    border-right: 3px solid transparent;
+    border-top: 5px solid #d97745;
+  }
+
+  .owl-wing {
+    position: absolute;
+    left: 2px;
+    bottom: 5px;
+    width: 10px;
+    height: 11px;
+    background: #8f6544;
+    border: 2px solid var(--warm-dark);
+  }
+
+  .timer-buddy {
+    position: absolute;
+    left: 8%;
+    bottom: 16%;
+    width: 28px;
+    height: 24px;
+    background: #ffe58e;
+    border: 2px solid var(--warm-dark);
+    box-shadow: 2px 2px 0 #d69e54;
+    animation: buddy-hop 3.5s steps(3) infinite;
+  }
+
+  .timer-buddy.nap {
+    opacity: 0.88;
+    animation-duration: 5s;
+  }
+
+  .buddy-eye {
+    position: absolute;
+    top: 8px;
+    width: 3px;
+    height: 3px;
+    background: var(--warm-dark);
+  }
+
+  .buddy-eye-left {
+    left: 7px;
+  }
+
+  .buddy-eye-right {
+    right: 7px;
+  }
+
+  .buddy-mouth {
+    position: absolute;
+    left: 10px;
+    top: 13px;
+    width: 6px;
+    height: 3px;
+    border-bottom: 2px solid #ce6f48;
+  }
+
+  .timer-spark {
+    position: absolute;
+    left: var(--left);
+    bottom: 20%;
+    width: var(--size);
+    height: var(--size);
+    border-radius: 1px;
+    background: #fff3be;
+    box-shadow: 0 0 0 2px rgba(255, 243, 190, 0.3);
+    animation: timer-spark-float 3s steps(8) infinite;
+    animation-delay: var(--delay);
+    opacity: calc(0.1 + (var(--timer-progress) / 100) * 0.8);
+  }
+
+  .timer-rewards {
+    position: absolute;
+    inset: 0;
+  }
+
+  .timer-reward {
+    position: absolute;
+    font-size: 14px;
+    line-height: 1;
+    animation: reward-pop 2.6s steps(4) infinite;
+    opacity: clamp(0.14, calc((var(--timer-progress) - var(--unlock)) / 24), 1);
+    filter: drop-shadow(0 0 2px rgba(255, 248, 209, 0.8));
+  }
+
+  .reward-1 { left: 10%; top: 18%; --unlock: 8; animation-delay: 0s; }
+  .reward-2 { left: 80%; top: 12%; --unlock: 20; animation-delay: 0.3s; }
+  .reward-3 { left: 84%; bottom: 26%; --unlock: 32; animation-delay: 0.5s; }
+  .reward-4 { left: 20%; bottom: 20%; --unlock: 46; animation-delay: 0.8s; }
+  .reward-5 { left: 70%; bottom: 12%; --unlock: 62; animation-delay: 1s; }
+  .reward-6 { left: 46%; top: 10%; --unlock: 78; animation-delay: 1.2s; }
 }
 </style>
