@@ -644,40 +644,46 @@ function randomBetween(min: number, max: number) {
 }
 
 function buildTimerCatPathPoints() {
-  const pointCount = 7
-  const minX = -64
-  const maxX = 64
-  const minY = -36
-  const maxY = 28
-  const minStepDistance = 18
-  const maxAttemptsPerPoint = 20
+  const minX = -136
+  const maxX = 136
+  const minY = -58
+  const maxY = 42
+  const perimeterPoints: Array<{ x: number, y: number }> = [
+    { x: minX, y: minY },
+    { x: 0, y: minY },
+    { x: maxX, y: minY },
+    { x: maxX, y: 0 },
+    { x: maxX, y: maxY },
+    { x: 0, y: maxY },
+    { x: minX, y: maxY },
+    { x: minX, y: 0 },
+  ]
+  const interiorPoints: Array<{ x: number, y: number }> = [
+    { x: -74, y: -20 },
+    { x: -28, y: 22 },
+    { x: 36, y: -30 },
+    { x: 84, y: 16 },
+  ]
+  const jitterX = 18
+  const jitterY = 12
+  const startIndex = Math.floor(randomBetween(0, perimeterPoints.length))
+  const direction = Math.random() > 0.5 ? 1 : -1
   const points: Array<{ x: number, y: number }> = []
 
-  for (let index = 0; index < pointCount; index += 1) {
-    let nextPoint = {
-      x: Math.round(randomBetween(minX, maxX)),
-      y: Math.round(randomBetween(minY, maxY)),
-    }
-    let attempts = 0
+  const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+  const withJitter = (x: number, y: number) => ({
+    x: Math.round(clamp(x + randomBetween(-jitterX, jitterX), minX, maxX)),
+    y: Math.round(clamp(y + randomBetween(-jitterY, jitterY), minY, maxY)),
+  })
 
-    while (attempts < maxAttemptsPerPoint) {
-      const previousPoint = points[index - 1]
-      if (!previousPoint) break
-
-      const dx = nextPoint.x - previousPoint.x
-      const dy = nextPoint.y - previousPoint.y
-      const distance = Math.hypot(dx, dy)
-      if (distance >= minStepDistance) break
-
-      nextPoint = {
-        x: Math.round(randomBetween(minX, maxX)),
-        y: Math.round(randomBetween(minY, maxY)),
-      }
-      attempts += 1
-    }
-
-    points.push(nextPoint)
+  for (let step = 0; step < perimeterPoints.length; step += 1) {
+    const index = (startIndex + direction * step + perimeterPoints.length) % perimeterPoints.length
+    const basePoint = perimeterPoints[index]
+    points.push(withJitter(basePoint.x, basePoint.y))
   }
+
+  const interiorPick = interiorPoints[Math.floor(randomBetween(0, interiorPoints.length))]
+  points.splice(4, 0, withJitter(interiorPick.x, interiorPick.y))
 
   return points
 }
@@ -692,20 +698,24 @@ function buildTimerCatStyle() {
     '--cat-cycle-duration': `${cycleDuration.toFixed(2)}s`,
     '--cat-step-duration': `${stepDuration.toFixed(2)}s`,
     '--cat-tail-duration': `${tailDuration.toFixed(2)}s`,
-    '--cat-p0x': `${points[0]?.x ?? -56}px`,
-    '--cat-p0y': `${points[0]?.y ?? -24}px`,
-    '--cat-p1x': `${points[1]?.x ?? -16}px`,
-    '--cat-p1y': `${points[1]?.y ?? -32}px`,
-    '--cat-p2x': `${points[2]?.x ?? 40}px`,
-    '--cat-p2y': `${points[2]?.y ?? -24}px`,
-    '--cat-p3x': `${points[3]?.x ?? 58}px`,
-    '--cat-p3y': `${points[3]?.y ?? 6}px`,
-    '--cat-p4x': `${points[4]?.x ?? 18}px`,
-    '--cat-p4y': `${points[4]?.y ?? 24}px`,
-    '--cat-p5x': `${points[5]?.x ?? -42}px`,
-    '--cat-p5y': `${points[5]?.y ?? 16}px`,
-    '--cat-p6x': `${points[6]?.x ?? -56}px`,
-    '--cat-p6y': `${points[6]?.y ?? -24}px`,
+    '--cat-p0x': `${points[0]?.x ?? -120}px`,
+    '--cat-p0y': `${points[0]?.y ?? -50}px`,
+    '--cat-p1x': `${points[1]?.x ?? 0}px`,
+    '--cat-p1y': `${points[1]?.y ?? -56}px`,
+    '--cat-p2x': `${points[2]?.x ?? 120}px`,
+    '--cat-p2y': `${points[2]?.y ?? -50}px`,
+    '--cat-p3x': `${points[3]?.x ?? 132}px`,
+    '--cat-p3y': `${points[3]?.y ?? 0}px`,
+    '--cat-p4x': `${points[4]?.x ?? 38}px`,
+    '--cat-p4y': `${points[4]?.y ?? 10}px`,
+    '--cat-p5x': `${points[5]?.x ?? 122}px`,
+    '--cat-p5y': `${points[5]?.y ?? 38}px`,
+    '--cat-p6x': `${points[6]?.x ?? 0}px`,
+    '--cat-p6y': `${points[6]?.y ?? 40}px`,
+    '--cat-p7x': `${points[7]?.x ?? -122}px`,
+    '--cat-p7y': `${points[7]?.y ?? 36}px`,
+    '--cat-p8x': `${points[8]?.x ?? -132}px`,
+    '--cat-p8y': `${points[8]?.y ?? -4}px`,
   }
 }
 
@@ -1407,7 +1417,7 @@ h1 {
 .timer-pixel-cat {
   position: absolute;
   left: 50%;
-  top: 54%;
+  top: 50%;
   width: 0;
   height: 0;
   z-index: 4;
@@ -1415,20 +1425,24 @@ h1 {
   --cat-cycle-duration: 7.6s;
   --cat-step-duration: 0.58s;
   --cat-tail-duration: 1.6s;
-  --cat-p0x: -58px;
-  --cat-p0y: -26px;
-  --cat-p1x: -22px;
-  --cat-p1y: -31px;
-  --cat-p2x: 44px;
-  --cat-p2y: -24px;
-  --cat-p3x: 56px;
-  --cat-p3y: 6px;
-  --cat-p4x: 24px;
-  --cat-p4y: 22px;
-  --cat-p5x: -42px;
-  --cat-p5y: 18px;
-  --cat-p6x: -58px;
-  --cat-p6y: -26px;
+  --cat-p0x: -120px;
+  --cat-p0y: -50px;
+  --cat-p1x: 0px;
+  --cat-p1y: -56px;
+  --cat-p2x: 120px;
+  --cat-p2y: -50px;
+  --cat-p3x: 132px;
+  --cat-p3y: 0px;
+  --cat-p4x: 38px;
+  --cat-p4y: 10px;
+  --cat-p5x: 122px;
+  --cat-p5y: 38px;
+  --cat-p6x: 0px;
+  --cat-p6y: 40px;
+  --cat-p7x: -122px;
+  --cat-p7y: 36px;
+  --cat-p8x: -132px;
+  --cat-p8y: -4px;
 }
 
 .timer-pixel-cat__path {
@@ -2425,12 +2439,14 @@ select {
 
 @keyframes timer-cat-path {
   0% { transform: translate(var(--cat-p0x), var(--cat-p0y)); }
-  16% { transform: translate(var(--cat-p1x), var(--cat-p1y)); }
-  32% { transform: translate(var(--cat-p2x), var(--cat-p2y)); }
-  48% { transform: translate(var(--cat-p3x), var(--cat-p3y)); }
-  64% { transform: translate(var(--cat-p4x), var(--cat-p4y)); }
-  82% { transform: translate(var(--cat-p5x), var(--cat-p5y)); }
-  100% { transform: translate(var(--cat-p6x), var(--cat-p6y)); }
+  12.5% { transform: translate(var(--cat-p1x), var(--cat-p1y)); }
+  25% { transform: translate(var(--cat-p2x), var(--cat-p2y)); }
+  37.5% { transform: translate(var(--cat-p3x), var(--cat-p3y)); }
+  50% { transform: translate(var(--cat-p4x), var(--cat-p4y)); }
+  62.5% { transform: translate(var(--cat-p5x), var(--cat-p5y)); }
+  75% { transform: translate(var(--cat-p6x), var(--cat-p6y)); }
+  87.5% { transform: translate(var(--cat-p7x), var(--cat-p7y)); }
+  100% { transform: translate(var(--cat-p8x), var(--cat-p8y)); }
 }
 
 @keyframes timer-cat-flip {
