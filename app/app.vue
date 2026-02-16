@@ -772,26 +772,6 @@ onBeforeUnmount(() => {
             )}`,
           }"
         >
-          <div class="mobile-timer-party" aria-hidden="true">
-            <div class="timer-ring-wrap">
-              <svg class="timer-ring" viewBox="0 0 120 120">
-                <defs>
-                  <linearGradient id="timerRingTrack" x1="15%" y1="10%" x2="85%" y2="90%">
-                    <stop offset="0%" stop-color="#fff0db" />
-                    <stop offset="100%" stop-color="#f5ad95" />
-                  </linearGradient>
-                  <linearGradient id="timerRingSunset" x1="10%" y1="0%" x2="95%" y2="95%">
-                    <stop offset="0%" stop-color="#ff6b6b" />
-                    <stop offset="40%" stop-color="#ff8fa3" />
-                    <stop offset="72%" stop-color="#f4a261" />
-                    <stop offset="100%" stop-color="#ffd93d" />
-                  </linearGradient>
-                </defs>
-                <circle class="timer-ring-bg" cx="60" cy="60" r="45" />
-                <circle class="timer-ring-fill" cx="60" cy="60" r="45" />
-              </svg>
-            </div>
-          </div>
           <p :key="`tick-${mmss}`" class="timer-display">{{ mmss }}</p>
           <div class="timer-track pixel-frame-inset">
             <div class="timer-fill" />
@@ -1297,10 +1277,6 @@ h1 {
 
 .timer-shell.running .timer-display {
   animation: timer-tick 1s steps(2) infinite;
-}
-
-.mobile-timer-party {
-  display: none;
 }
 
 .timer-track,
@@ -2072,11 +2048,6 @@ select {
   50% { box-shadow: 0 0 14px rgba(255, 143, 163, 0.58), 0 0 24px rgba(255, 217, 61, 0.38); }
 }
 
-@keyframes ring-glow {
-  0%, 100% { filter: drop-shadow(0 0 8px rgba(255, 143, 163, 0.5)) drop-shadow(0 0 14px rgba(255, 217, 61, 0.34)); }
-  50% { filter: drop-shadow(0 0 12px rgba(255, 143, 163, 0.7)) drop-shadow(0 0 20px rgba(255, 217, 61, 0.48)); }
-}
-
 @keyframes timer-flash {
   0% { opacity: 0.95; background: rgba(255, 255, 224, 0.7); }
   100% { opacity: 0; background: rgba(255, 255, 224, 0); }
@@ -2228,51 +2199,6 @@ select {
   .timer-shell {
     overflow: hidden;
     padding: 16px 12px 14px;
-  }
-
-  .mobile-timer-party {
-    display: block;
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    z-index: 1;
-  }
-
-  .timer-ring-wrap {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 138px;
-    height: 138px;
-    transform: translate(-50%, -55%);
-  }
-
-  .timer-ring {
-    width: 100%;
-    height: 100%;
-    transform: rotate(-90deg);
-    filter: drop-shadow(0 0 7px rgba(255, 143, 163, 0.32));
-  }
-
-  .timer-ring-bg,
-  .timer-ring-fill {
-    fill: none;
-    stroke-width: 8;
-    stroke-linecap: round;
-  }
-
-  .timer-ring-bg {
-    stroke: url(#timerRingTrack);
-    opacity: 0.9;
-  }
-
-  .timer-ring-fill {
-    stroke: url(#timerRingSunset);
-    stroke-dasharray: 283;
-    stroke-dashoffset: calc(283 - (283 * var(--timer-progress) / 100));
-    transition: stroke-dashoffset 0.5s linear, filter 0.3s ease;
-    filter: drop-shadow(0 0 8px rgba(255, 143, 163, 0.56)) drop-shadow(0 0 12px rgba(255, 217, 61, 0.4));
-    animation: ring-glow 2.2s ease-in-out infinite;
   }
 }
 </style>
