@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 type Mode = 'focus' | 'break'
 type ActivityTab = 'stats' | 'history'
@@ -18,13 +18,6 @@ type HistoryEntry = {
   completedAt: string
 }
 
-type TodoItem = {
-  id: string
-  todoText: string
-  completed: boolean
-  createdAt: string
-}
-
 type SupabaseGardenSessionRow = {
   total_sessions: number
   sessions_today: number
@@ -39,16 +32,8 @@ type SupabaseHistoryRow = {
   completed_at: string
 }
 
-type SupabaseTodoRow = {
-  id: string
-  todo_text: string
-  completed: boolean
-  created_at: string
-}
-
 const STORAGE_KEY = 'focus-garden:v1'
 const USER_KEY = 'focus-garden:user-id'
-const TODO_DAY_KEY = 'focus-garden:todo-day'
 
 const config = useRuntimeConfig()
 const supabaseUrl = String(config.public.supabaseUrl || '').replace(/\/+$/, '')
@@ -71,6 +56,7 @@ function createSupabaseClient(baseUrl: string, token: string) {
 
   const loadGarden = async (userId: string) => {
     if (!enabled) return null
+
     const query = new URLSearchParams({
       select: 'total_sessions,sessions_today,streak_days,last_session_date',
       user_id: `eq.${userId}`,
@@ -81,6 +67,7 @@ function createSupabaseClient(baseUrl: string, token: string) {
       method: 'GET',
       headers: headers(),
     })
+
     if (!response.ok) throw new Error(`load garden failed with status ${response.status}`)
 
     const rows = await response.json() as SupabaseGardenSessionRow[]
@@ -89,6 +76,7 @@ function createSupabaseClient(baseUrl: string, token: string) {
 
   const upsertGarden = async (userId: string, state: GardenState) => {
     if (!enabled) return
+
     const payload = {
       user_id: userId,
       total_sessions: state.totalSessions,
@@ -103,11 +91,13 @@ function createSupabaseClient(baseUrl: string, token: string) {
       headers: headers('resolution=merge-duplicates,return=minimal'),
       body: JSON.stringify(payload),
     })
+
     if (!response.ok) throw new Error(`sync garden failed with status ${response.status}`)
   }
 
-  const loadHistory = async (userId: string, limit = 30) => {
+  const loadHistory = async (userId: string, limit = 40) => {
     if (!enabled) return []
+
     const query = new URLSearchParams({
       select: 'id,session_type,duration_minutes,completed_at',
       user_id: `eq.${userId}`,
@@ -119,6 +109,7 @@ function createSupabaseClient(baseUrl: string, token: string) {
       method: 'GET',
       headers: headers(),
     })
+
     if (!response.ok) throw new Error(`load history failed with status ${response.status}`)
 
     const rows = await response.json() as SupabaseHistoryRow[]
@@ -127,6 +118,7 @@ function createSupabaseClient(baseUrl: string, token: string) {
 
   const insertHistory = async (userId: string, entry: HistoryEntry) => {
     if (!enabled) return
+
     const payload = {
       id: entry.id,
       user_id: userId,
@@ -140,76 +132,8 @@ function createSupabaseClient(baseUrl: string, token: string) {
       headers: headers('return=minimal'),
       body: JSON.stringify(payload),
     })
+
     if (!response.ok) throw new Error(`insert history failed with status ${response.status}`)
-  }
-
-  const loadTodos = async (userId: string) => {
-    if (!enabled) return []
-    const query = new URLSearchParams({
-      select: 'id,todo_text,completed,created_at',
-      user_id: `eq.${userId}`,
-      order: 'created_at.asc',
-      limit: '3',
-    })
-
-    const response = await fetch(`${normalizedBaseUrl}/rest/v1/garden_todos?${query.toString()}`, {
-      method: 'GET',
-      headers: headers(),
-    })
-    if (!response.ok) throw new Error(`load todos failed with status ${response.status}`)
-
-    const rows = await response.json() as SupabaseTodoRow[]
-    return Array.isArray(rows) ? rows : []
-  }
-
-  const insertTodo = async (userId: string, item: TodoItem) => {
-    if (!enabled) return
-    const payload = {
-      id: item.id,
-      user_id: userId,
-      todo_text: item.todoText,
-      completed: item.completed,
-      created_at: item.createdAt,
-    }
-
-    const response = await fetch(`${normalizedBaseUrl}/rest/v1/garden_todos`, {
-      method: 'POST',
-      headers: headers('return=minimal'),
-      body: JSON.stringify(payload),
-    })
-    if (!response.ok) throw new Error(`insert todo failed with status ${response.status}`)
-  }
-
-  const updateTodo = async (userId: string, item: TodoItem) => {
-    if (!enabled) return
-    const query = new URLSearchParams({
-      id: `eq.${item.id}`,
-      user_id: `eq.${userId}`,
-    })
-
-    const response = await fetch(`${normalizedBaseUrl}/rest/v1/garden_todos?${query.toString()}`, {
-      method: 'PATCH',
-      headers: headers('return=minimal'),
-      body: JSON.stringify({
-        todo_text: item.todoText,
-        completed: item.completed,
-      }),
-    })
-    if (!response.ok) throw new Error(`update todo failed with status ${response.status}`)
-  }
-
-  const deleteTodo = async (userId: string, todoId: string) => {
-    if (!enabled) return
-    const query = new URLSearchParams({
-      id: `eq.${todoId}`,
-      user_id: `eq.${userId}`,
-    })
-
-    const response = await fetch(`${normalizedBaseUrl}/rest/v1/garden_todos?${query.toString()}`, {
-      method: 'DELETE',
-      headers: headers('return=minimal'),
-    })
-    if (!response.ok) throw new Error(`delete todo failed with status ${response.status}`)
   }
 
   return {
@@ -218,23 +142,20 @@ function createSupabaseClient(baseUrl: string, token: string) {
     upsertGarden,
     loadHistory,
     insertHistory,
-    loadTodos,
-    insertTodo,
-    updateTodo,
-    deleteTodo,
   }
 }
 
 const supabaseClient = createSupabaseClient(supabaseUrl, supabaseToken)
 const supabaseEnabled = supabaseClient.enabled
+const syncInProgress = ref(false)
 
 const focusMinutes = ref(25)
 const breakMinutes = ref(5)
 const mode = ref<Mode>('focus')
 const secondsLeft = ref(focusMinutes.value * 60)
 const running = ref(false)
-let timer: ReturnType<typeof setInterval> | null = null
-const syncInProgress = ref(false)
+const showInputs = ref(false)
+const activeActivityTab = ref<ActivityTab>('stats')
 
 const garden = ref<GardenState>({
   totalSessions: 0,
@@ -243,33 +164,34 @@ const garden = ref<GardenState>({
   lastSessionDate: null,
 })
 const history = ref<HistoryEntry[]>([])
-const todos = ref<TodoItem[]>([])
-const newTodoText = ref('')
-const activeActivityTab = ref<ActivityTab>('stats')
+const newlyPlanted = ref<number[]>([])
+const showSparkle = ref(false)
 
 const lofiStations = [
-  { name: 'Lofi Girl 🎧', url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk', type: 'external' },
-  { name: 'SomaFM Groove', url: 'https://ice4.somafm.com/groovesalad-128-mp3', type: 'audio' },
+  { name: 'Lofi Girl Live', url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk', type: 'external' },
+  { name: 'SomaFM Groove Salad', url: 'https://ice4.somafm.com/groovesalad-128-mp3', type: 'audio' },
   { name: 'SomaFM Drone Zone', url: 'https://ice4.somafm.com/dronezone-128-mp3', type: 'audio' },
 ]
 
 const selectedStation = ref(lofiStations[1].url)
 const audioRef = ref<HTMLAudioElement | null>(null)
 const audioPlaying = ref(false)
-const newlyPlanted = ref<number[]>([])
-const showSparkle = ref(false)
-const showInputs = ref(false)
 
-const mmss = computed(() => {
-  const m = Math.floor(secondsLeft.value / 60).toString().padStart(2, '0')
-  const s = (secondsLeft.value % 60).toString().padStart(2, '0')
-  return `${m}:${s}`
-})
+let timer: ReturnType<typeof setInterval> | null = null
+
+const modeTitle = computed(() => mode.value === 'focus' ? 'Deep Focus' : 'Gentle Break')
+const modeHint = computed(() => mode.value === 'focus' ? 'Build momentum one calm session at a time.' : 'Let your attention reset before the next sprint.')
 
 const dayPhase = computed(() => {
-  if (garden.value.totalSessions >= 20) return 'night'
-  if (garden.value.totalSessions >= 8) return 'sunset'
-  return 'day'
+  if (garden.value.totalSessions >= 22) return 'night'
+  if (garden.value.totalSessions >= 10) return 'sunset'
+  return 'golden'
+})
+
+const mmss = computed(() => {
+  const minutes = Math.floor(secondsLeft.value / 60).toString().padStart(2, '0')
+  const seconds = (secondsLeft.value % 60).toString().padStart(2, '0')
+  return `${minutes}:${seconds}`
 })
 
 const gardenStage = computed(() => {
@@ -280,28 +202,57 @@ const gardenStage = computed(() => {
   return 0
 })
 
-const plantCount = computed(() => Math.min(12, Math.floor(garden.value.totalSessions / 2) + 1))
-
 const progressToNext = computed(() => {
   if (garden.value.totalSessions >= 30) return 100
   const thresholds = [3, 10, 20, 30]
   const current = garden.value.totalSessions
-  const next = thresholds.find(t => current < t)
+  const next = thresholds.find(value => current < value)
   if (!next) return 100
-  const prev = [...thresholds].reverse().find(t => t <= current) ?? 0
-  const ratio = ((current - prev) / (next - prev)) * 100
+
+  const previous = [...thresholds].reverse().find(value => value <= current) ?? 0
+  const ratio = ((current - previous) / (next - previous)) * 100
   return Math.max(0, Math.min(100, Math.round(ratio)))
 })
 
-const canAddTodo = computed(() => {
-  return todos.value.length < 3 && newTodoText.value.trim().length > 0
+const plantTypes = [
+  { id: 'daisy', name: 'Daisy', emoji: '🌼', hue: 44 },
+  { id: 'sunflower', name: 'Sunflower', emoji: '🌻', hue: 38 },
+  { id: 'tulip', name: 'Tulip', emoji: '🌷', hue: 12 },
+  { id: 'hibiscus', name: 'Hibiscus', emoji: '🌺', hue: 8 },
+  { id: 'rose', name: 'Rose', emoji: '🌹', hue: 0 },
+  { id: 'cactus', name: 'Cactus', emoji: '🌵', hue: 140 },
+]
+
+const plantCount = computed(() => Math.min(14, Math.floor(garden.value.totalSessions / 2) + 1))
+
+const plants = computed(() => {
+  return Array.from({ length: plantCount.value }, (_, index) => ({
+    id: index,
+    hue: plantTypes[index % plantTypes.length].hue,
+    emoji: plantTypes[index % plantTypes.length].emoji,
+    style: makePlantStyle(index),
+  }))
+})
+
+const unlockedPlants = computed(() => {
+  const count = garden.value.totalSessions
+  if (count <= 0) return []
+  if (count < 3) return [plantTypes[0]]
+  if (count < 10) return plantTypes.slice(0, 2)
+  if (count < 20) return plantTypes.slice(0, 4)
+  return plantTypes
 })
 
 const recentHistory = computed(() => history.value.slice(0, 20))
 
+function dayFromIsoTimestamp(isoValue: string) {
+  return isoValue.slice(0, 10)
+}
+
 function countEntriesBetween(startInclusive: Date, endExclusive: Date) {
   const startMs = startInclusive.getTime()
   const endMs = endExclusive.getTime()
+
   return history.value.filter((entry) => {
     const completed = new Date(entry.completedAt).getTime()
     return completed >= startMs && completed < endMs
@@ -311,8 +262,8 @@ function countEntriesBetween(startInclusive: Date, endExclusive: Date) {
 function startOfWeek(date: Date) {
   const start = new Date(date)
   start.setHours(0, 0, 0, 0)
-  const day = (start.getDay() + 6) % 7
-  start.setDate(start.getDate() - day)
+  const offset = (start.getDay() + 6) % 7
+  start.setDate(start.getDate() - offset)
   return start
 }
 
@@ -346,10 +297,6 @@ const monthlyStats = computed(() => {
   }
 })
 
-function dayFromIsoTimestamp(isoValue: string) {
-  return isoValue.slice(0, 10)
-}
-
 const bestStreakFromHistory = computed(() => {
   const focusDays = new Set(
     history.value
@@ -357,21 +304,22 @@ const bestStreakFromHistory = computed(() => {
       .map(entry => dayFromIsoTimestamp(entry.completedAt)),
   )
   const sorted = [...focusDays].sort()
+
   let best = 0
   let current = 0
-  let prev: string | null = null
+  let previous: string | null = null
 
   for (const day of sorted) {
-    if (!prev) {
+    if (!previous) {
       current = 1
     } else {
-      const prevDate = new Date(prev)
+      const prevDate = new Date(previous)
       const currentDate = new Date(day)
       const delta = Math.round((currentDate.getTime() - prevDate.getTime()) / 86400000)
       current = delta === 1 ? current + 1 : 1
     }
     best = Math.max(best, current)
-    prev = day
+    previous = day
   }
 
   return best
@@ -379,17 +327,19 @@ const bestStreakFromHistory = computed(() => {
 
 const streakHistory = computed(() => {
   const byDay: Record<string, number> = {}
+
   for (const entry of history.value) {
     if (entry.sessionType !== 'focus') continue
     const day = dayFromIsoTimestamp(entry.completedAt)
     byDay[day] = (byDay[day] || 0) + 1
   }
 
-  return Array.from({ length: 10 }, (_, i) => {
+  return Array.from({ length: 10 }, (_, index) => {
     const date = new Date()
-    date.setDate(date.getDate() - (9 - i))
+    date.setDate(date.getDate() - (9 - index))
     const iso = date.toISOString().slice(0, 10)
     const count = byDay[iso] || 0
+
     return {
       day: iso.slice(5),
       count,
@@ -398,67 +348,24 @@ const streakHistory = computed(() => {
   })
 })
 
-const plantTypes = [
-  { id: 'flower', name: 'Flower', emoji: '🌸', hue: 330 },
-  { id: 'sunflower', name: 'Sunflower', emoji: '🌻', hue: 45 },
-  { id: 'tulip', name: 'Tulip', emoji: '🌷', hue: 350 },
-  { id: 'rose', name: 'Rose', emoji: '🌹', hue: 0 },
-  { id: 'cactus', name: 'Cactus', emoji: '🌵', hue: 150 },
-  { id: 'lavender', name: 'Lavender', emoji: '💜', hue: 270 },
-]
-
-const plants = computed(() => {
-  return Array.from({ length: plantCount.value }, (_, i) => ({
-    id: i,
-    type: plantTypes[i % plantTypes.length].id,
-    hue: plantTypes[i % plantTypes.length].hue,
-    style: makePlantStyle(i),
-  }))
-})
-
-const unlockedPlants = computed(() => {
-  const count = garden.value.totalSessions
-  if (count === 0) return []
-  if (count < 3) return [plantTypes[0]]
-  if (count < 10) return plantTypes.slice(0, 2)
-  if (count < 20) return plantTypes.slice(0, 4)
-  return plantTypes
-})
-
-function makePlantStyle(index: number) {
-  const left = 8 + (index * 7.5) % 80
-  const scale = 0.85 + (index % 3) * 0.15
-  const bottom = 18 + (index * 2) % 15
-  return {
-    left: `${left}%`,
-    bottom: `${bottom}%`,
-    transform: `translateX(-50%) scale(${scale})`,
-  }
-}
-
-function persist() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    focusMinutes: focusMinutes.value,
-    breakMinutes: breakMinutes.value,
-    mode: mode.value,
-    secondsLeft: secondsLeft.value,
-    garden: garden.value,
-    selectedStation: selectedStation.value,
-    history: history.value,
-    todos: todos.value,
-  }))
-}
-
 function todayISO() {
   return new Date().toISOString().slice(0, 10)
+}
+
+function createLocalId() {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.round(Math.random() * 1e9)}`
 }
 
 function getOrCreateUserId() {
   const existing = localStorage.getItem(USER_KEY)
   if (existing) return existing
+
   const next = typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
     : `user-${Date.now()}-${Math.round(Math.random() * 1e9)}`
+
   localStorage.setItem(USER_KEY, next)
   return next
 }
@@ -477,29 +384,41 @@ function sanitizeGardenState(value: unknown): GardenState {
 
 function sanitizeHistoryEntry(value: unknown): HistoryEntry | null {
   const input = (value ?? {}) as Record<string, unknown>
-  const type = input.sessionType === 'break' ? 'break' : input.sessionType === 'focus' ? 'focus' : null
+  const sessionType = input.sessionType === 'break' ? 'break' : input.sessionType === 'focus' ? 'focus' : null
   const completedAt = typeof input.completedAt === 'string' ? input.completedAt : null
-  if (!type || !completedAt) return null
+
+  if (!sessionType || !completedAt) return null
 
   return {
-    id: typeof input.id === 'string' ? input.id : `${Date.now()}-${Math.random()}`,
-    sessionType: type,
+    id: typeof input.id === 'string' ? input.id : createLocalId(),
+    sessionType,
     durationMinutes: Math.max(1, Number(input.durationMinutes ?? 0) || 1),
     completedAt,
   }
 }
 
-function sanitizeTodoItem(value: unknown): TodoItem | null {
-  const input = (value ?? {}) as Record<string, unknown>
-  const todoText = typeof input.todoText === 'string' ? input.todoText.trim() : ''
-  if (!todoText) return null
+function makePlantStyle(index: number) {
+  const left = 8 + (index * 7.2) % 82
+  const scale = 0.75 + (index % 4) * 0.14
+  const bottom = 17 + (index * 2) % 16
 
   return {
-    id: typeof input.id === 'string' ? input.id : `${Date.now()}-${Math.random()}`,
-    todoText,
-    completed: Boolean(input.completed),
-    createdAt: typeof input.createdAt === 'string' ? input.createdAt : new Date().toISOString(),
+    left: `${left}%`,
+    bottom: `${bottom}%`,
+    transform: `translateX(-50%) scale(${scale})`,
   }
+}
+
+function persist() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    focusMinutes: focusMinutes.value,
+    breakMinutes: breakMinutes.value,
+    mode: mode.value,
+    secondsLeft: secondsLeft.value,
+    selectedStation: selectedStation.value,
+    garden: garden.value,
+    history: history.value,
+  }))
 }
 
 function syncDailyCounters() {
@@ -511,25 +430,9 @@ function syncDailyCounters() {
   return false
 }
 
-function syncTodoDailyReset() {
-  const today = todayISO()
-  const savedDay = localStorage.getItem(TODO_DAY_KEY)
-  let changed = false
-
-  if (savedDay !== today) {
-    todos.value = todos.value.map((item) => {
-      if (!item.completed) return item
-      changed = true
-      return { ...item, completed: false }
-    })
-    localStorage.setItem(TODO_DAY_KEY, today)
-  }
-
-  return changed
-}
-
 async function ensureSupabaseTable() {
   if (!supabaseEnabled) return false
+
   try {
     await $fetch('/api/supabase/setup', {
       method: 'POST',
@@ -548,10 +451,9 @@ async function loadFromSupabase() {
   const userId = getOrCreateUserId()
 
   try {
-    const [gardenRow, historyRows, todoRows] = await Promise.all([
+    const [gardenRow, historyRows] = await Promise.all([
       supabaseClient.loadGarden(userId),
       supabaseClient.loadHistory(userId, 40),
-      supabaseClient.loadTodos(userId),
     ])
 
     return {
@@ -571,15 +473,6 @@ async function loadFromSupabase() {
           completedAt: row.completed_at,
         }))
         .filter((entry): entry is HistoryEntry => entry !== null),
-      todos: todoRows
-        .map(row => sanitizeTodoItem({
-          id: row.id,
-          todoText: row.todo_text,
-          completed: row.completed,
-          createdAt: row.created_at,
-        }))
-        .filter((item): item is TodoItem => item !== null)
-        .slice(0, 3),
     }
   } catch (error) {
     console.warn('[focus-garden] Could not load Supabase state. Using localStorage fallback.', error)
@@ -606,6 +499,7 @@ async function syncGardenToSupabase() {
 
 async function syncHistoryEntryToSupabase(entry: HistoryEntry) {
   if (!supabaseEnabled) return
+
   const userId = getOrCreateUserId()
   try {
     await supabaseClient.insertHistory(userId, entry)
@@ -614,79 +508,49 @@ async function syncHistoryEntryToSupabase(entry: HistoryEntry) {
   }
 }
 
-async function syncTodoCreateToSupabase(item: TodoItem) {
-  if (!supabaseEnabled) return
-  const userId = getOrCreateUserId()
-  try {
-    await supabaseClient.insertTodo(userId, item)
-  } catch (error) {
-    console.warn('[focus-garden] Todo create sync failed. localStorage remains source of truth.', error)
-  }
-}
-
-async function syncTodoUpdateToSupabase(item: TodoItem) {
-  if (!supabaseEnabled) return
-  const userId = getOrCreateUserId()
-  try {
-    await supabaseClient.updateTodo(userId, item)
-  } catch (error) {
-    console.warn('[focus-garden] Todo update sync failed. localStorage remains source of truth.', error)
-  }
-}
-
-async function syncTodoDeleteToSupabase(todoId: string) {
-  if (!supabaseEnabled) return
-  const userId = getOrCreateUserId()
-  try {
-    await supabaseClient.deleteTodo(userId, todoId)
-  } catch (error) {
-    console.warn('[focus-garden] Todo delete sync failed. localStorage remains source of truth.', error)
-  }
+function stopTimer() {
+  if (!timer) return
+  clearInterval(timer)
+  timer = null
 }
 
 function setMode(next: Mode) {
   mode.value = next
-  secondsLeft.value = (next === 'focus' ? focusMinutes.value : breakMinutes.value) * 60
   running.value = false
   stopTimer()
+  secondsLeft.value = (next === 'focus' ? focusMinutes.value : breakMinutes.value) * 60
   persist()
-}
-
-function stopTimer() {
-  if (timer) {
-    clearInterval(timer)
-    timer = null
-  }
 }
 
 function completeFocusSession() {
   const today = todayISO()
-  const last = garden.value.lastSessionDate
-  const prevCount = garden.value.totalSessions
+  const previousTotal = garden.value.totalSessions
+  const previousDate = garden.value.lastSessionDate
 
   garden.value.totalSessions += 1
   garden.value.sessionsToday += 1
 
-  const newCount = garden.value.totalSessions
   const newPlantIndices: number[] = []
-  for (let i = Math.floor(prevCount / 2); i < Math.floor(newCount / 2); i++) {
+  for (let i = Math.floor(previousTotal / 2); i < Math.floor(garden.value.totalSessions / 2); i += 1) {
     newPlantIndices.push(i)
   }
+
   if (newPlantIndices.length > 0) {
     newlyPlanted.value = newPlantIndices
     showSparkle.value = true
     setTimeout(() => {
       newlyPlanted.value = []
       showSparkle.value = false
-    }, 2500)
+    }, 2200)
   }
 
-  if (!last) {
+  if (!previousDate) {
     garden.value.streakDays = 1
   } else {
-    const dLast = new Date(last)
-    const dToday = new Date(today)
-    const delta = Math.round((dToday.getTime() - dLast.getTime()) / 86400000)
+    const last = new Date(previousDate)
+    const current = new Date(today)
+    const delta = Math.round((current.getTime() - last.getTime()) / 86400000)
+
     if (delta === 1) {
       garden.value.streakDays += 1
     } else if (delta > 1) {
@@ -699,12 +563,6 @@ function completeFocusSession() {
   void syncGardenToSupabase()
 }
 
-function createLocalId() {
-  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.round(Math.random() * 1e9)}`
-}
-
 function recordCompletedSession(sessionType: Mode, durationMinutes: number) {
   const entry: HistoryEntry = {
     id: createLocalId(),
@@ -712,17 +570,19 @@ function recordCompletedSession(sessionType: Mode, durationMinutes: number) {
     durationMinutes: Math.max(1, Number(durationMinutes) || 1),
     completedAt: new Date().toISOString(),
   }
+
   history.value = [entry, ...history.value].slice(0, 100)
   persist()
   void syncHistoryEntryToSupabase(entry)
 }
 
 function onTimerDone() {
-  const completedSessionType = mode.value
-  const duration = completedSessionType === 'focus' ? focusMinutes.value : breakMinutes.value
-  recordCompletedSession(completedSessionType, duration)
+  const completedMode = mode.value
+  const completedDuration = completedMode === 'focus' ? focusMinutes.value : breakMinutes.value
 
-  if (completedSessionType === 'focus') {
+  recordCompletedSession(completedMode, completedDuration)
+
+  if (completedMode === 'focus') {
     completeFocusSession()
     setMode('break')
   } else {
@@ -748,6 +608,7 @@ function toggleTimer() {
     }
     secondsLeft.value -= 1
   }, 1000)
+
   persist()
 }
 
@@ -764,40 +625,6 @@ function applyPreset(focus: number, rest: number) {
   resetTimer()
 }
 
-function addTodo() {
-  const text = newTodoText.value.trim()
-  if (!text || todos.value.length >= 3) return
-
-  const item: TodoItem = {
-    id: createLocalId(),
-    todoText: text,
-    completed: false,
-    createdAt: new Date().toISOString(),
-  }
-  todos.value = [...todos.value, item]
-  newTodoText.value = ''
-  persist()
-  void syncTodoCreateToSupabase(item)
-}
-
-function toggleTodo(todoId: string) {
-  const idx = todos.value.findIndex(item => item.id === todoId)
-  if (idx < 0) return
-
-  const next = { ...todos.value[idx], completed: !todos.value[idx].completed }
-  todos.value.splice(idx, 1, next)
-  persist()
-  void syncTodoUpdateToSupabase(next)
-}
-
-function removeTodo(todoId: string) {
-  const idx = todos.value.findIndex(item => item.id === todoId)
-  if (idx < 0) return
-  todos.value.splice(idx, 1)
-  persist()
-  void syncTodoDeleteToSupabase(todoId)
-}
-
 function formatHistoryTime(iso: string) {
   const date = new Date(iso)
   return date.toLocaleString(undefined, {
@@ -809,13 +636,15 @@ function formatHistoryTime(iso: string) {
 }
 
 async function toggleAudio() {
-  const station = lofiStations.find(s => s.url === selectedStation.value)
+  const station = lofiStations.find(item => item.url === selectedStation.value)
+
   if (!station || station.type === 'external') {
-    window.open(station?.url || selectedStation.value, '_blank')
+    window.open(station?.url || selectedStation.value, '_blank', 'noopener,noreferrer')
     return
   }
 
   if (!audioRef.value) return
+
   if (audioPlaying.value) {
     audioRef.value.pause()
     audioPlaying.value = false
@@ -831,9 +660,13 @@ async function toggleAudio() {
 }
 
 watch([focusMinutes, breakMinutes], () => {
+  focusMinutes.value = Math.min(180, Math.max(5, Number(focusMinutes.value) || 25))
+  breakMinutes.value = Math.min(60, Math.max(1, Number(breakMinutes.value) || 5))
+
   if (!running.value) {
     secondsLeft.value = (mode.value === 'focus' ? focusMinutes.value : breakMinutes.value) * 60
   }
+
   persist()
 })
 
@@ -852,49 +685,45 @@ onMounted(async () => {
   if (raw) {
     try {
       const data = JSON.parse(raw) as Record<string, unknown>
-      focusMinutes.value = Number(data.focusMinutes ?? 25)
-      breakMinutes.value = Number(data.breakMinutes ?? 5)
+      focusMinutes.value = Math.min(180, Math.max(5, Number(data.focusMinutes ?? 25) || 25))
+      breakMinutes.value = Math.min(60, Math.max(1, Number(data.breakMinutes ?? 5) || 5))
       mode.value = data.mode === 'break' ? 'break' : 'focus'
-      secondsLeft.value = Number(data.secondsLeft ?? focusMinutes.value * 60)
+      secondsLeft.value = Math.max(0, Number(data.secondsLeft ?? focusMinutes.value * 60) || focusMinutes.value * 60)
       selectedStation.value = String(data.selectedStation ?? lofiStations[1].url)
 
-      if (data.garden) garden.value = sanitizeGardenState(data.garden)
+      if (data.garden) {
+        garden.value = sanitizeGardenState(data.garden)
+      }
+
       if (Array.isArray(data.history)) {
         history.value = data.history
           .map(entry => sanitizeHistoryEntry(entry))
           .filter((entry): entry is HistoryEntry => entry !== null)
       }
-      if (Array.isArray(data.todos)) {
-        todos.value = data.todos
-          .map(item => sanitizeTodoItem(item))
-          .filter((item): item is TodoItem => item !== null)
-          .slice(0, 3)
-      }
     } catch {
-      // Keep defaults if local storage is malformed.
+      // Ignore malformed localStorage payloads and keep defaults.
     }
   }
 
   await ensureSupabaseTable()
   const supabaseState = await loadFromSupabase()
   if (supabaseState) {
-    if (supabaseState.garden) {
-      garden.value = supabaseState.garden
-    }
+    if (supabaseState.garden) garden.value = supabaseState.garden
     history.value = supabaseState.history
-    todos.value = supabaseState.todos
   }
 
-  const dailyResetApplied = syncDailyCounters()
-  const todoResetApplied = syncTodoDailyReset()
+  const resetApplied = syncDailyCounters()
   persist()
-  if (dailyResetApplied) {
+
+  if (resetApplied) {
     void syncGardenToSupabase()
   }
-  if (todoResetApplied) {
-    for (const item of todos.value) {
-      void syncTodoUpdateToSupabase(item)
-    }
+})
+
+onBeforeUnmount(() => {
+  stopTimer()
+  if (audioRef.value) {
+    audioRef.value.pause()
   }
 })
 </script>
@@ -902,1336 +731,796 @@ onMounted(async () => {
 <template>
   <NuxtRouteAnnouncer />
   <main class="app" :data-phase="dayPhase">
-    <section class="panel timer-panel">
-      <div class="brand">🌱 Focus Garden</div>
-      <h1>{{ mode === 'focus' ? 'Focus Time' : 'Break Time' }}</h1>
-      <p class="subtitle">Grow your garden, grow your mind</p>
+    <div class="ambient ambient-one" />
+    <div class="ambient ambient-two" />
 
-      <div class="timer-container">
-        <div class="timer-glow" />
-        <div class="timer-glow-2" />
-        <div class="timer">{{ mmss }}</div>
-      </div>
-
-      <div class="controls">
-        <button class="primary" @click="toggleTimer">
-          <span v-if="running">⏸ Pause</span>
-          <span v-else>▶ Start</span>
-        </button>
-        <button @click="resetTimer">↺ Reset</button>
-        <button @click="setMode(mode === 'focus' ? 'break' : 'focus')">
-          {{ mode === 'focus' ? '☕ Break' : '🎯 Focus' }}
-        </button>
-      </div>
-
-      <div class="presets">
-        <button @click="applyPreset(25, 5)">25/5</button>
-        <button @click="applyPreset(50, 10)">50/10</button>
-        <button @click="applyPreset(90, 20)">90/20</button>
-      </div>
-
-      <button class="more-options-btn" @click="showInputs = !showInputs">
-        ⚙️ More
-      </button>
-
-      <transition name="inputs-toggle">
-        <div v-if="showInputs" class="inputs">
-          <label>
-            Focus
-            <input v-model.number="focusMinutes" type="number" min="5" max="180" />
-          </label>
-          <label>
-            Break
-            <input v-model.number="breakMinutes" type="number" min="1" max="60" />
-          </label>
-        </div>
-      </transition>
-
-      <div class="audio-box">
-        <label for="station">🎵 Ambiance</label>
-        <select id="station" v-model="selectedStation">
-          <option v-for="station in lofiStations" :key="station.url" :value="station.url">
-            {{ station.name }}
-          </option>
-        </select>
-        <button class="audio-btn" @click="toggleAudio">
-          {{ audioPlaying ? '⏹ Stop' : '🎵 Play' }}
-        </button>
-        <audio ref="audioRef" :src="selectedStation" preload="none" loop />
-      </div>
-
-      <div class="todos-box">
-        <div class="todos-header">
-          <h3>Daily Habits</h3>
-          <span>{{ todos.length }}/3</span>
-        </div>
-        <div class="todo-input-row">
-          <input
-            v-model="newTodoText"
-            type="text"
-            placeholder="Add a daily habit"
-            maxlength="60"
-            @keyup.enter="addTodo"
-          />
-          <button :disabled="!canAddTodo" @click="addTodo">Add</button>
-        </div>
-        <div v-if="todos.length === 0" class="todo-empty">No habits yet.</div>
-        <div v-else class="todo-list">
-          <label v-for="todo in todos" :key="todo.id" class="todo-item">
-            <input type="checkbox" :checked="todo.completed" @change="toggleTodo(todo.id)" />
-            <span :class="{ done: todo.completed }">{{ todo.todoText }}</span>
-            <button class="todo-remove" @click.prevent="removeTodo(todo.id)">✕</button>
-          </label>
+    <header class="topbar">
+      <div class="brand-mark">
+        <span class="brand-icon">🌿</span>
+        <div>
+          <p class="brand-title">Focus Garden</p>
+          <p class="brand-subtitle">Cozy focus, one session at a time</p>
         </div>
       </div>
-    </section>
+      <div class="live-pill">
+        <span class="dot" :class="{ running }" />
+        {{ running ? 'Session Running' : 'Ready to Bloom' }}
+      </div>
+    </header>
 
-    <section class="panel garden-panel">
-      <div class="garden-header">
-        <h2>🌸 Your Garden</h2>
-        <div class="stats-row">
-          <div class="stat">
-            <span class="stat-value">{{ garden.totalSessions }}</span>
-            <span class="stat-label">Total</span>
+    <section class="workspace">
+      <article class="panel timer-panel">
+        <div class="mode-row">
+          <button class="mode-chip" :class="{ active: mode === 'focus' }" @click="setMode('focus')">Focus</button>
+          <button class="mode-chip" :class="{ active: mode === 'break' }" @click="setMode('break')">Break</button>
+        </div>
+
+        <h1>{{ modeTitle }}</h1>
+        <p class="mode-hint">{{ modeHint }}</p>
+
+        <div class="timer-shell">
+          <div class="timer-ring" />
+          <div class="timer-display">{{ mmss }}</div>
+        </div>
+
+        <div class="controls">
+          <button class="btn btn-primary" @click="toggleTimer">{{ running ? 'Pause' : 'Start' }}</button>
+          <button class="btn" @click="resetTimer">Reset</button>
+          <button class="btn" @click="setMode(mode === 'focus' ? 'break' : 'focus')">Switch</button>
+        </div>
+
+        <div class="preset-row">
+          <button class="chip" @click="applyPreset(25, 5)">25 / 5</button>
+          <button class="chip" @click="applyPreset(50, 10)">50 / 10</button>
+          <button class="chip" @click="applyPreset(90, 20)">90 / 20</button>
+          <button class="chip" @click="showInputs = !showInputs">Custom</button>
+        </div>
+
+        <transition name="expand">
+          <div v-if="showInputs" class="inputs">
+            <label>
+              Focus Minutes
+              <input v-model.number="focusMinutes" type="number" min="5" max="180">
+            </label>
+            <label>
+              Break Minutes
+              <input v-model.number="breakMinutes" type="number" min="1" max="60">
+            </label>
           </div>
-          <div class="stat">
+        </transition>
+
+        <div class="audio-box">
+          <label for="station">Ambience</label>
+          <select id="station" v-model="selectedStation">
+            <option v-for="station in lofiStations" :key="station.url" :value="station.url">
+              {{ station.name }}
+            </option>
+          </select>
+          <button class="btn btn-audio" @click="toggleAudio">{{ audioPlaying ? 'Stop Audio' : 'Play Audio' }}</button>
+          <audio ref="audioRef" :src="selectedStation" preload="none" loop />
+        </div>
+      </article>
+
+      <article class="panel garden-panel">
+        <div class="stats-ribbon">
+          <div class="stat-card">
+            <span class="stat-value">{{ garden.totalSessions }}</span>
+            <span class="stat-label">Total Sessions</span>
+          </div>
+          <div class="stat-card">
             <span class="stat-value">{{ garden.sessionsToday }}</span>
             <span class="stat-label">Today</span>
           </div>
-          <div class="stat">
-            <span class="stat-value">{{ garden.streakDays }}🔥</span>
-            <span class="stat-label">Streak</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="stage-row">
-        <span>Stage {{ gardenStage }} / 4</span>
-        <span class="progress-text">{{ progressToNext }}% to next</span>
-      </div>
-      <div class="progress">
-        <div class="progress-fill" :style="{ width: `${progressToNext}%` }" />
-      </div>
-
-      <div class="garden-canvas">
-        <!-- Sky -->
-        <div class="sky-layer">
-          <template v-if="dayPhase === 'night'">
-            <div v-for="i in 40" :key="i" class="star" :style="{
-              left: `${(i * 23 + 7) % 100}%`,
-              top: `${(i * 17 + 3) % 45}%`,
-              animationDelay: `${i * 0.15}s`,
-              opacity: 0.2 + (i % 4) * 0.2
-            }" />
-          </template>
-          
-          <div v-if="dayPhase === 'night'" class="moon">
-            <div class="moon-glow" />
-            <div class="moon-body">
-              <div class="crater c1" />
-              <div class="crater c2" />
-              <div class="crater c3" />
-              <div class="crater c4" />
-            </div>
-          </div>
-          
-          <div v-if="dayPhase !== 'night'" class="sun" :class="dayPhase">
-            <div class="sun-rays" />
-          </div>
-          
-          <div class="clouds-layer">
-            <div class="cloud c1" />
-            <div class="cloud c2" />
-            <div class="cloud c3" />
+          <div class="stat-card">
+            <span class="stat-value">{{ garden.streakDays }}</span>
+            <span class="stat-label">Streak Days</span>
           </div>
         </div>
 
-        <!-- Hills -->
-        <div class="hills-layer">
-          <div class="hill h1" />
-          <div class="hill h2" />
-          <div class="hill h3" />
-          <div class="hill h4" />
-        </div>
-
-        <!-- Ground -->
-        <div class="ground-layer">
-          <div class="ground-texture" />
-          <div class="grass-patches">
-            <div v-for="i in 15" :key="i" class="grass-tuft" :style="{
-              left: `${i * 6.5 + 2}%`,
-              transform: `rotate(${(i % 7) - 3}deg)`
-            }" />
+        <div class="progress-box">
+          <div class="progress-labels">
+            <span>Garden Stage {{ gardenStage }} / 4</span>
+            <span>{{ progressToNext }}% to next stage</span>
+          </div>
+          <div class="progress-track">
+            <div class="progress-fill" :style="{ width: `${progressToNext}%` }" />
           </div>
         </div>
 
-        <!-- Empty State -->
-        <div v-if="garden.totalSessions === 0" class="empty-garden">
-          <div class="empty-plant">
-            <div class="pot">
-              <div class="pot-rim" />
-              <div class="pot-body">
-                <div class="pot-shine" />
-              </div>
-            </div>
-            <div class="sprout">
-              <div class="stem" />
-              <div class="leaf l1" />
-              <div class="leaf l2" />
-              <div class="leaf l3" />
-              <div class="dew d1" />
-              <div class="dew d2" />
-            </div>
-            <div class="glow" />
-          </div>
-          <p class="empty-text">Start growing! 🌱</p>
-        </div>
+        <div class="garden-canvas">
+          <div class="sky" />
+          <div class="sun" :class="dayPhase" />
+          <div class="horizon" />
+          <div class="ground" />
 
-        <!-- Plants -->
-        <template v-else>
-          <div
-            v-for="plant in plants"
-            :key="plant.id"
-            class="plant"
-            :class="[`type-${plant.type}`, { 'just-planted': newlyPlanted.includes(plant.id) }]"
-            :style="plant.style"
-          >
-            <div class="plant-container" :style="{ '--hue': plant.hue }">
-              <div class="stem-main">
-                <div class="stem-layer" />
-              </div>
-              <div class="leaves">
-                <div class="leaf-element le1" />
-                <div class="leaf-element le2" />
-                <div class="leaf-element le3" />
-                <div class="leaf-element le4" />
-              </div>
-              <div class="flower-head">
-                <div class="petals">
-                  <div class="petal p1" />
-                  <div class="petal p2" />
-                  <div class="petal p3" />
-                  <div class="petal p4" />
-                  <div class="petal p5" />
-                  <div class="petal p6" />
-                  <div class="petal p7" />
-                  <div class="petal p8" />
-                </div>
-                <div class="flower-center">
-                  <div class="center-dot" />
-                  <div class="center-dot" />
-                  <div class="center-dot" />
-                  <div class="center-dot" />
-                  <div class="center-dot" />
-                </div>
-              </div>
-              <div v-if="gardenStage >= 4" class="plant-glow" />
-            </div>
-          </div>
-        </template>
-
-        <!-- Sparkles -->
-        <div v-if="showSparkle" class="sparkle-overlay">
-          <div v-for="i in 12" :key="i" class="sparkle-particle" :style="{
-            left: `${15 + (i * 6) % 70}%`,
-            top: `${30 + (i * 4) % 40}%`,
-            animationDelay: `${i * 0.1}s`
-          }" />
-        </div>
-
-        <!-- Particles -->
-        <div class="particles">
-          <template v-if="dayPhase === 'night'">
-            <div v-for="i in 15" :key="i" class="firefly" :style="{
-              left: `${(i * 19) % 100}%`,
-              top: `${25 + (i * 13) % 45}%`,
-              animationDelay: `${i * 0.3}s`
-            }" />
-          </template>
-          <template v-else-if="dayPhase === 'sunset'">
-            <div v-for="i in 8" :key="i" class="firefly faint" :style="{
-              left: `${(i * 23) % 100}%`,
-              top: `${30 + (i * 11) % 40}%`,
+          <div class="fireflies">
+            <span v-for="i in 8" :key="i" class="firefly" :style="{
+              left: `${10 + i * 11}%`,
               animationDelay: `${i * 0.4}s`
             }" />
-          </template>
+          </div>
+
+          <div v-if="garden.totalSessions === 0" class="empty-garden">
+            <div class="pot">🪴</div>
+            <p>Start a focus session to grow your first bloom.</p>
+          </div>
+
           <template v-else>
-            <div v-for="i in 5" :key="i" class="dust" :style="{
-              left: `${(i * 27) % 100}%`,
-              top: `${20 + (i * 17) % 50}%`,
-              animationDelay: `${i * 0.8}s`
-            }" />
+            <div
+              v-for="plant in plants"
+              :key="plant.id"
+              class="plant"
+              :class="{ fresh: newlyPlanted.includes(plant.id) }"
+              :style="plant.style"
+            >
+              <div class="stem" :style="{ '--hue': plant.hue }" />
+              <div class="bloom">{{ plant.emoji }}</div>
+              <div class="plant-glow" :style="{ '--hue': plant.hue }" />
+            </div>
           </template>
-        </div>
-      </div>
 
-      <!-- Collection -->
-      <div class="plant-showcase">
-        <h3>🌱 Collection</h3>
-        <div class="plant-evolution">
-          <div 
-            v-for="plant in plantTypes" 
-            :key="plant.id"
-            class="evolution-row"
-            :class="{ locked: !unlockedPlants.find(p => p.id === plant.id) }"
-          >
-            <span class="plant-emoji">{{ plant.emoji }}</span>
-            <div class="evolution-stages">
-              <div 
-                v-for="stage in 4" 
-                :key="stage" 
-                class="stage-dot"
-                :class="{ active: gardenStage >= stage }"
-              />
+          <transition name="sparkle">
+            <div v-if="showSparkle" class="sparkle-overlay">
+              <span v-for="i in 24" :key="i" class="spark" :style="{
+                left: `${(i * 17 + 12) % 100}%`,
+                top: `${20 + (i * 13) % 60}%`,
+                animationDelay: `${i * 0.04}s`
+              }" />
             </div>
-            <span class="plant-name">{{ plant.name }}</span>
+          </transition>
+        </div>
+
+        <div class="activity-box">
+          <div class="activity-tabs">
+            <button class="tab" :class="{ active: activeActivityTab === 'stats' }" @click="activeActivityTab = 'stats'">Stats</button>
+            <button class="tab" :class="{ active: activeActivityTab === 'history' }" @click="activeActivityTab = 'history'">History</button>
           </div>
-        </div>
-      </div>
 
-      <div class="activity-box">
-        <div class="activity-tabs">
-          <button :class="{ active: activeActivityTab === 'stats' }" @click="activeActivityTab = 'stats'">Stats</button>
-          <button :class="{ active: activeActivityTab === 'history' }" @click="activeActivityTab = 'history'">History</button>
-        </div>
+          <div v-if="activeActivityTab === 'stats'" class="stats-panel">
+            <div class="mini-grid">
+              <div class="mini-stat">
+                <span>This Week</span>
+                <strong>{{ weeklyStats.thisWeek }}</strong>
+              </div>
+              <div class="mini-stat">
+                <span>Last Week</span>
+                <strong>{{ weeklyStats.lastWeek }}</strong>
+              </div>
+              <div class="mini-stat">
+                <span>This Month</span>
+                <strong>{{ monthlyStats.thisMonth }}</strong>
+              </div>
+              <div class="mini-stat">
+                <span>Last Month</span>
+                <strong>{{ monthlyStats.lastMonth }}</strong>
+              </div>
+              <div class="mini-stat">
+                <span>Best Streak</span>
+                <strong>{{ bestStreakFromHistory }}</strong>
+              </div>
+              <div class="mini-stat">
+                <span>Unlocked Plants</span>
+                <strong>{{ unlockedPlants.length }}</strong>
+              </div>
+            </div>
 
-        <div v-if="activeActivityTab === 'stats'" class="stats-panel">
-          <div class="basic-stats-grid">
-            <div class="mini-stat">
-              <span class="mini-label">This Week</span>
-              <span class="mini-value">{{ weeklyStats.thisWeek }}</span>
-            </div>
-            <div class="mini-stat">
-              <span class="mini-label">Last Week</span>
-              <span class="mini-value">{{ weeklyStats.lastWeek }}</span>
-            </div>
-            <div class="mini-stat">
-              <span class="mini-label">This Month</span>
-              <span class="mini-value">{{ monthlyStats.thisMonth }}</span>
-            </div>
-            <div class="mini-stat">
-              <span class="mini-label">Last Month</span>
-              <span class="mini-value">{{ monthlyStats.lastMonth }}</span>
-            </div>
-            <div class="mini-stat">
-              <span class="mini-label">Current Streak</span>
-              <span class="mini-value">{{ garden.streakDays }}</span>
-            </div>
-            <div class="mini-stat">
-              <span class="mini-label">Best Streak</span>
-              <span class="mini-value">{{ Math.max(bestStreakFromHistory, garden.streakDays) }}</span>
-            </div>
-          </div>
-          <div class="streak-history">
-            <h3>Streak History</h3>
-            <div class="streak-history-grid">
-              <div v-for="entry in streakHistory" :key="entry.day" class="streak-day">
-                <div class="streak-bar" :class="{ active: entry.active }" :style="{ height: `${Math.min(100, 25 + entry.count * 25)}%` }" />
-                <span>{{ entry.day }}</span>
+            <div class="streak-chart">
+              <p>Last 10 Days</p>
+              <div class="streak-bars">
+                <div v-for="day in streakHistory" :key="day.day" class="streak-day">
+                  <div class="bar" :class="{ active: day.active }" :style="{ height: `${Math.max(16, day.count * 16)}px` }" />
+                  <span>{{ day.day }}</span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div v-else class="history-panel">
-          <div v-if="recentHistory.length === 0" class="history-empty">No completed sessions yet.</div>
-          <div v-else class="history-list">
-            <div v-for="entry in recentHistory" :key="entry.id" class="history-item">
-              <span class="history-type" :class="entry.sessionType">{{ entry.sessionType }}</span>
-              <span class="history-duration">{{ entry.durationMinutes }} min</span>
-              <span class="history-time">{{ formatHistoryTime(entry.completedAt) }}</span>
-            </div>
+          <div v-else class="history-panel">
+            <p v-if="recentHistory.length === 0" class="history-empty">No sessions recorded yet.</p>
+            <ul v-else class="history-list">
+              <li v-for="entry in recentHistory" :key="entry.id" class="history-item">
+                <span class="badge" :class="entry.sessionType">{{ entry.sessionType }}</span>
+                <span class="duration">{{ entry.durationMinutes }} min</span>
+                <span class="time">{{ formatHistoryTime(entry.completedAt) }}</span>
+              </li>
+            </ul>
           </div>
         </div>
-      </div>
-
-      <p class="hint">Complete focus sessions to grow your garden ✨</p>
+      </article>
     </section>
   </main>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Manrope:wght@400;500;600;700&display=swap');
 
 :root {
-  --accent: #22c55e;
-  --accent-light: #4ade80;
+  --cream-1: #fff3dd;
+  --cream-2: #ffd9a7;
+  --amber-1: #f6a13a;
+  --amber-2: #d6721f;
+  --earth-1: #7a421a;
+  --earth-2: #4f2a12;
+  --olive-1: #b2c57c;
+  --leaf-1: #6f9148;
 }
 
-:global(body) {
-  margin: 0;
-  font-family: 'Outfit', sans-serif;
-  background: #080c14;
-  color: #f0f4f8;
+* {
+  box-sizing: border-box;
 }
 
 .app {
   min-height: 100vh;
+  padding: 1rem;
+  color: #fff8ed;
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(120% 120% at 20% 10%, #ffcb7f 0%, #f49a4d 36%, #9d4f1f 74%, #46210f 100%);
+}
+
+.app[data-phase='sunset'] {
+  background: radial-gradient(130% 130% at 50% 0%, #ffd8a6 0%, #f4a65a 35%, #ad5f2b 68%, #4f2813 100%);
+}
+
+.app[data-phase='night'] {
+  background: radial-gradient(130% 130% at 50% 0%, #f5bf87 0%, #a25d30 40%, #4f2a1a 70%, #2a1711 100%);
+}
+
+.ambient {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(35px);
+  pointer-events: none;
+}
+
+.ambient-one {
+  width: 340px;
+  height: 340px;
+  top: -120px;
+  left: -80px;
+  background: rgba(255, 199, 122, 0.35);
+  animation: drift-a 9s ease-in-out infinite;
+}
+
+.ambient-two {
+  width: 420px;
+  height: 420px;
+  right: -120px;
+  bottom: -180px;
+  background: rgba(255, 144, 59, 0.26);
+  animation: drift-b 11s ease-in-out infinite;
+}
+
+@keyframes drift-a {
+  0%,
+  100% { transform: translate(0, 0); }
+  50% { transform: translate(22px, 12px); }
+}
+
+@keyframes drift-b {
+  0%,
+  100% { transform: translate(0, 0); }
+  50% { transform: translate(-20px, -14px); }
+}
+
+.topbar {
+  max-width: 1180px;
+  margin: 0 auto 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  position: relative;
+  z-index: 2;
+}
+
+.brand-mark {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.brand-icon {
+  width: 46px;
+  height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(255, 214, 151, 0.48), rgba(232, 137, 64, 0.28));
+  border: 1px solid rgba(255, 240, 214, 0.36);
+  box-shadow: 0 10px 24px rgba(69, 29, 8, 0.33);
+}
+
+.brand-title {
+  margin: 0;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 1.28rem;
+  letter-spacing: 0.2px;
+}
+
+.brand-subtitle {
+  margin: 0.1rem 0 0;
+  color: rgba(255, 242, 225, 0.84);
+  font-size: 0.82rem;
+}
+
+.live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.48rem 0.78rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  background: rgba(66, 31, 13, 0.4);
+  border: 1px solid rgba(255, 216, 173, 0.38);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #ffc47b;
+}
+
+.dot.running {
+  background: #ffe6a9;
+  box-shadow: 0 0 12px rgba(255, 224, 135, 0.9);
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% { transform: scale(1); opacity: 0.75; }
+  50% { transform: scale(1.25); opacity: 1; }
+}
+
+.workspace {
+  max-width: 1180px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 2;
   display: grid;
   gap: 1rem;
-  grid-template-columns: 1fr;
-  padding: 0.75rem;
-  transition: background 1s ease;
-}
-
-.app[data-phase='day'] { 
-  background: linear-gradient(180deg, #1e3a5f 0%, #0f1f35 50%, #0a1425 100%);
-}
-.app[data-phase='sunset'] { 
-  background: linear-gradient(180deg, #3d2952 0%, #261838 50%, #130d1f 100%);
-}
-.app[data-phase='night'] { 
-  background: linear-gradient(180deg, #0a0f1a 0%, #04060d 50%, #020408 100%);
-}
-
-@media (min-width: 640px) {
-  .app {
-    padding: 1rem;
-    gap: 1.25rem;
-  }
-}
-
-@media (min-width: 1024px) {
-  .app {
-    grid-template-columns: 1fr 1.3fr;
-    padding: 1.5rem;
-    gap: 2rem;
-  }
 }
 
 .panel {
-  background: linear-gradient(145deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.03) 100%);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 20px;
-  padding: 1.25rem;
-  backdrop-filter: blur(24px);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  border-radius: 28px;
+  border: 1px solid rgba(255, 220, 183, 0.2);
+  background: linear-gradient(160deg, rgba(101, 51, 21, 0.53), rgba(53, 26, 13, 0.62));
+  box-shadow: 0 18px 42px rgba(34, 13, 6, 0.35), inset 0 1px 0 rgba(255, 237, 206, 0.16);
+  backdrop-filter: blur(8px);
 }
 
-@media (min-width: 1024px) {
-  .panel {
-    border-radius: 28px;
-    padding: 1.75rem;
-  }
+.timer-panel {
+  padding: 1.1rem;
 }
 
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  background: linear-gradient(135deg, rgba(34,197,94,0.3) 0%, rgba(16,185,129,0.2) 100%);
-  color: #86efac;
-  border: 1px solid rgba(134,239,172,0.35);
+.mode-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.95rem;
+}
+
+.mode-chip {
+  border: none;
   border-radius: 999px;
-  padding: 0.35rem 0.75rem;
-  font-size: 0.8rem;
-  font-weight: 600;
+  padding: 0.42rem 0.84rem;
+  font-family: inherit;
+  font-size: 0.78rem;
+  color: #ffe9cb;
+  background: rgba(255, 222, 183, 0.12);
+  cursor: pointer;
+  transition: 0.2s ease;
 }
 
-h1, h2, h3 { margin: 0; font-weight: 800; }
+.mode-chip.active {
+  background: linear-gradient(145deg, #ffbf62, #f08d3e);
+  color: #3e1d0f;
+  font-weight: 700;
+}
 
 h1 {
-  font-size: 1.5rem;
-  margin-top: 0.75rem;
-  background: linear-gradient(135deg, #fff 0%, #c7d2fe 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  margin: 0;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: clamp(1.8rem, 4.6vw, 2.4rem);
+  line-height: 1.1;
 }
 
-@media (min-width: 640px) {
-  h1 { font-size: 1.8rem; }
+.mode-hint {
+  margin: 0.42rem 0 1rem;
+  color: rgba(255, 237, 212, 0.88);
+  font-size: 0.88rem;
 }
 
-h2 { font-size: 1.2rem; color: #e2e8f0; }
-h3 { font-size: 0.95rem; color: #e2e8f0; margin-bottom: 0.5rem; }
-
-.subtitle { margin: 0.35rem 0 0.75rem; color: #94a3b8; font-size: 0.9rem; }
-
-.timer-container {
+.timer-shell {
   position: relative;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin: 1.25rem 0;
-  height: 150px;
+  margin: 0 auto 1rem;
+  width: min(100%, 390px);
+  border-radius: 28px;
+  padding: 1.15rem 0.9rem;
+  text-align: center;
+  background: linear-gradient(175deg, rgba(255, 227, 188, 0.1), rgba(255, 159, 80, 0.05));
+  border: 1px solid rgba(255, 227, 193, 0.24);
 }
 
-@media (min-width: 640px) {
-  .timer-container {
-    height: 180px;
-    margin: 1.5rem 0;
-  }
-}
-
-.timer-glow {
+.timer-ring {
   position: absolute;
-  width: 200px;
-  height: 200px;
-  background: radial-gradient(circle, rgba(34,197,94,0.25) 0%, transparent 70%);
-  border-radius: 50%;
-  animation: pulse-soft 4s ease-in-out infinite;
+  inset: 0;
+  border-radius: 28px;
+  box-shadow: inset 0 0 24px rgba(255, 198, 125, 0.16), 0 0 34px rgba(255, 150, 68, 0.28);
+  pointer-events: none;
 }
 
-.timer-glow-2 {
-  position: absolute;
-  width: 150px;
-  height: 150px;
-  background: radial-gradient(circle, rgba(74,222,128,0.15) 0%, transparent 60%);
-  border-radius: 50%;
-  animation: pulse-soft 4s ease-in-out infinite 0.5s;
-}
-
-@keyframes pulse-soft {
-  0%, 100% { transform: scale(1); opacity: 0.6; }
-  50% { transform: scale(1.1); opacity: 1; }
-}
-
-.timer {
-  font-size: clamp(2.8rem, 12vw, 5.8rem);
-  font-weight: 800;
-  letter-spacing: 6px;
-  font-variant-numeric: tabular-nums;
-  color: #fff;
-  text-shadow: 0 0 50px rgba(34,197,94,0.6), 0 4px 20px rgba(0,0,0,0.3);
+.timer-display {
   position: relative;
   z-index: 1;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: clamp(3rem, 13vw, 5.4rem);
+  letter-spacing: 2px;
+  color: #fff5df;
+  text-shadow: 0 0 22px rgba(255, 187, 102, 0.4), 0 8px 24px rgba(39, 15, 6, 0.45);
 }
 
 .controls {
   display: flex;
-  gap: 0.5rem;
   flex-wrap: wrap;
+  gap: 0.55rem;
   justify-content: center;
-  margin-bottom: 0.75rem;
 }
 
-.presets {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  justify-content: center;
-  margin-bottom: 0.75rem;
-}
-
-@media (min-width: 640px) {
-  .controls, .presets {
-    gap: 0.6rem;
-  }
-  .controls { margin-bottom: 1rem; }
-  .presets { margin-bottom: 1rem; }
-}
-
-button {
-  border: 1px solid rgba(255,255,255,0.15);
-  background: linear-gradient(145deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.04) 100%);
-  color: #e2e8f0;
-  padding: 0.6rem 1rem;
-  border-radius: 12px;
-  cursor: pointer;
+.btn,
+.chip,
+.tab {
+  border: 1px solid rgba(255, 225, 180, 0.22);
+  background: linear-gradient(145deg, rgba(255, 210, 159, 0.2), rgba(209, 115, 51, 0.18));
+  color: #fff4e0;
+  padding: 0.56rem 0.95rem;
+  border-radius: 14px;
   font-family: inherit;
-  font-size: 0.85rem;
   font-weight: 600;
-  transition: all 0.2s ease;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
 }
 
-@media (min-width: 640px) {
-  button {
-    padding: 0.75rem 1.3rem;
-    border-radius: 16px;
-    font-size: 0.95rem;
-  }
-}
-
-button:hover {
-  background: linear-gradient(145deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.08) 100%);
+.btn:hover,
+.chip:hover,
+.tab:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+  box-shadow: 0 10px 20px rgba(45, 18, 8, 0.28);
+  filter: saturate(1.08);
 }
 
-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-.primary {
-  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+.btn-primary {
   border: none;
-  color: white;
-  padding: 0.6rem 1.5rem;
-  box-shadow: 0 4px 24px rgba(34,197,94,0.4), inset 0 1px 0 rgba(255,255,255,0.2);
+  background: linear-gradient(145deg, #ffd27f 0%, #f49d47 45%, #df732a 100%);
+  color: #3f1f10;
+  font-weight: 800;
+  box-shadow: 0 12px 24px rgba(217, 112, 38, 0.42);
 }
 
-@media (min-width: 640px) {
-  .primary {
-    padding: 0.75rem 2rem;
-  }
-}
-
-.primary:hover {
-  background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+.preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
 }
 
 .inputs {
-  margin-top: 1rem;
+  margin-top: 0.9rem;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  row-gap: 0.8rem;
-  column-gap: 1.25rem;
-}
-
-.more-options-btn {
-  margin-top: 0.5rem;
-}
-
-.inputs-toggle-enter-active,
-.inputs-toggle-leave-active {
-  transition: opacity 0.25s ease, transform 0.25s ease;
-}
-
-.inputs-toggle-enter-from,
-.inputs-toggle-leave-to {
-  opacity: 0;
-  transform: translateY(-6px);
+  grid-template-columns: 1fr;
+  gap: 0.68rem;
 }
 
 label {
   display: grid;
-  gap: 0.35rem;
-  font-size: 0.8rem;
-  color: #94a3b8;
+  gap: 0.34rem;
+  color: #ffeed7;
+  font-size: 0.77rem;
 }
 
-input, select {
+input,
+select {
   width: 100%;
-  padding: 0.55rem;
-  border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(15,23,42,0.7);
-  color: #f1f5f9;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 216, 166, 0.28);
+  padding: 0.58rem 0.66rem;
+  color: #fff4e3;
+  background: rgba(63, 29, 14, 0.56);
   font-family: inherit;
   font-size: 0.9rem;
-  transition: all 0.2s;
 }
 
-@media (min-width: 640px) {
-  label { font-size: 0.85rem; }
-  input, select { padding: 0.7rem; border-radius: 14px; font-size: 1rem; }
-}
-
-input:focus, select:focus {
+input:focus,
+select:focus {
   outline: none;
-  border-color: rgba(34,197,94,0.6);
-  box-shadow: 0 0 0 3px rgba(34,197,94,0.15);
+  border-color: rgba(255, 214, 134, 0.66);
+  box-shadow: 0 0 0 2px rgba(255, 187, 95, 0.22);
 }
 
-.audio-box { margin-top: 0.85rem; display: grid; gap: 0.45rem; }
-.audio-btn { width: fit-content; justify-self: center; }
-
-.todos-box {
-  margin-top: 1rem;
-  padding: 0.8rem;
-  border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.09);
-  background: rgba(0,0,0,0.2);
-}
-
-.todos-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-  color: #cbd5e1;
-  font-size: 0.8rem;
-}
-
-.todo-input-row {
+.audio-box {
+  margin-top: 0.92rem;
   display: grid;
-  grid-template-columns: 1fr auto;
   gap: 0.45rem;
-  margin-bottom: 0.55rem;
 }
 
-.todo-input-row button {
-  padding: 0.55rem 0.8rem;
+.btn-audio {
+  justify-self: start;
 }
 
-.todo-empty {
-  color: #64748b;
-  font-size: 0.8rem;
+.expand-enter-active,
+.expand-leave-active {
+  transition: all 0.22s ease;
 }
 
-.todo-list {
+.expand-enter-from,
+.expand-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+.garden-panel {
+  padding: 1rem;
+}
+
+.stats-ribbon {
   display: grid;
-  gap: 0.35rem;
-}
-
-.todo-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 10px;
-  padding: 0.45rem 0.55rem;
-  color: #e2e8f0;
-}
-
-.todo-item input[type='checkbox'] {
-  width: 16px;
-  height: 16px;
-}
-
-.todo-item span {
-  flex: 1;
-  font-size: 0.85rem;
-}
-
-.todo-item span.done {
-  text-decoration: line-through;
-  color: #94a3b8;
-}
-
-.todo-remove {
-  padding: 0.2rem 0.45rem;
-  border-radius: 8px;
-}
-
-/* Garden Panel */
-.garden-header {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-@media (min-width: 640px) {
-  .garden-header {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: flex-start;
-  }
-}
-
-.stats-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.5rem;
 }
 
-@media (min-width: 640px) {
-  .stats-row {
-    gap: 0.75rem;
-  }
-}
-
-.stat {
-  background: linear-gradient(145deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 14px;
-  padding: 0.6rem 0.5rem;
+.stat-card {
+  border-radius: 16px;
+  padding: 0.7rem 0.55rem;
   text-align: center;
-  transition: transform 0.2s;
+  border: 1px solid rgba(255, 215, 171, 0.22);
+  background: linear-gradient(155deg, rgba(255, 224, 181, 0.18), rgba(171, 87, 33, 0.2));
 }
 
-@media (min-width: 640px) {
-  .stat {
-    border-radius: 18px;
-    padding: 0.9rem;
-  }
+.stat-value {
+  display: block;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 1.4rem;
+  line-height: 1;
 }
 
-.stat:hover { transform: translateY(-2px); }
-
-.stat-value { display: block; font-size: 1.2rem; font-weight: 800; color: #f8fafc; }
-
-@media (min-width: 640px) {
-  .stat-value { font-size: 1.6rem; }
+.stat-label {
+  display: block;
+  margin-top: 0.18rem;
+  font-size: 0.68rem;
+  color: rgba(255, 235, 208, 0.88);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
 }
 
-.stat-label { color: #64748b; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.5px; }
-
-@media (min-width: 640px) {
-  .stat-label { font-size: 0.75rem; }
+.progress-box {
+  margin-top: 0.8rem;
+  border-radius: 16px;
+  padding: 0.65rem 0.72rem;
+  background: rgba(71, 31, 13, 0.5);
+  border: 1px solid rgba(255, 219, 177, 0.16);
 }
 
-.stage-row {
+.progress-labels {
   display: flex;
   justify-content: space-between;
-  margin-top: 0.85rem;
-  color: #94a3b8;
-  font-size: 0.8rem;
+  gap: 0.6rem;
+  font-size: 0.72rem;
+  color: rgba(255, 239, 216, 0.9);
 }
 
-.progress-text { color: #86efac; }
-
-.progress {
+.progress-track {
+  margin-top: 0.42rem;
   height: 8px;
-  background: rgba(255,255,255,0.1);
   border-radius: 999px;
+  background: rgba(255, 232, 196, 0.14);
   overflow: hidden;
-  margin-top: 0.4rem;
 }
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #22c55e, #4ade80, #34d399);
-  border-radius: 999px;
-  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 0 12px rgba(34,197,94,0.5);
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ffd17f 0%, #f59d48 50%, #df712d 100%);
+  transition: width 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 18px rgba(255, 187, 102, 0.5);
 }
 
-/* Garden Canvas */
 .garden-canvas {
+  margin-top: 0.92rem;
   position: relative;
-  height: 260px;
-  margin-top: 1rem;
-  border-radius: 18px;
+  height: 320px;
+  border-radius: 24px;
   overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.15);
+  border: 1px solid rgba(255, 220, 184, 0.26);
+  background: linear-gradient(180deg, rgba(255, 214, 158, 0.7) 0%, rgba(233, 134, 63, 0.72) 52%, rgba(108, 51, 22, 0.9) 100%);
 }
 
-@media (min-width: 640px) {
-  .garden-canvas {
-    height: 320px;
-    margin-top: 1.25rem;
-    border-radius: 24px;
-  }
-}
-
-/* Sky */
-.sky-layer { position: absolute; inset: 0; z-index: 1; }
-
-.star {
-  position: absolute;
-  width: 2px;
-  height: 2px;
-  background: #fff;
-  border-radius: 50%;
-  animation: twinkle 2.5s ease-in-out infinite;
-}
-
-@keyframes twinkle {
-  0%, 100% { opacity: 0.2; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.3); }
-}
-
-.moon {
-  position: absolute;
-  top: 15px;
-  right: 20px;
-  width: 40px;
-  height: 40px;
-  z-index: 2;
-}
-
-@media (min-width: 640px) {
-  .moon { top: 20px; right: 30px; width: 50px; height: 50px; }
-}
-
-.moon-glow {
-  position: absolute;
-  inset: -15px;
-  background: radial-gradient(circle, rgba(254,240,138,0.3) 0%, transparent 70%);
-  animation: moon-pulse 4s ease-in-out infinite;
-}
-
-@keyframes moon-pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
-
-.moon-body {
+.sky {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 35% 35%, #fefce8, #fef9c3 50%, #fde047);
-  border-radius: 50%;
-  box-shadow: 0 0 30px rgba(254,240,138,0.5);
+  background: radial-gradient(circle at 50% 0%, rgba(255, 239, 203, 0.6) 0%, transparent 58%);
 }
-
-.crater { position: absolute; background: rgba(0,0,0,0.08); border-radius: 50%; }
-.crater.c1 { width: 8px; height: 8px; top: 10px; left: 11px; }
-.crater.c2 { width: 5px; height: 5px; top: 20px; left: 6px; }
-.crater.c3 { width: 6px; height: 6px; top: 16px; left: 22px; }
-.crater.c4 { width: 4px; height: 4px; top: 26px; left: 14px; }
 
 .sun {
   position: absolute;
-  top: 12px;
+  top: 18px;
   left: 50%;
   transform: translateX(-50%);
-  width: 45px;
-  height: 45px;
+  width: 58px;
+  height: 58px;
+  border-radius: 999px;
+  box-shadow: 0 0 40px rgba(255, 193, 103, 0.7);
+  background: radial-gradient(circle at 35% 35%, #fff7db, #ffc267 65%, #ed8e3b 100%);
+  animation: sway-sun 7s ease-in-out infinite;
+}
+
+.sun.night {
+  background: radial-gradient(circle at 35% 35%, #fff2cd, #e7b06f 65%, #b67644 100%);
+  box-shadow: 0 0 30px rgba(241, 188, 122, 0.48);
+}
+
+@keyframes sway-sun {
+  0%,
+  100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(6px); }
+}
+
+.horizon {
+  position: absolute;
+  left: -8%;
+  right: -8%;
+  bottom: 78px;
+  height: 110px;
   border-radius: 50%;
-  z-index: 2;
+  background: linear-gradient(180deg, rgba(106, 55, 26, 0.26), rgba(72, 36, 17, 0.66));
 }
 
-@media (min-width: 640px) {
-  .sun { top: 15px; width: 60px; height: 60px; }
-}
-
-.sun.day {
-  background: radial-gradient(circle at 30% 30%, #fff7ed, #fbbf24 60%, #f59e0b);
-  box-shadow: 0 0 50px rgba(251,191,36,0.6);
-}
-
-.sun.sunset {
-  background: radial-gradient(circle at 30% 30%, #fed7aa, #f97316 60%, #ea580c);
-  box-shadow: 0 0 60px rgba(249,115,22,0.6);
-}
-
-.sun-rays {
+.ground {
   position: absolute;
-  inset: -25px;
-  background: conic-gradient(from 0deg, transparent 0deg, rgba(255,255,255,0.1) 10deg, transparent 20deg);
-  animation: rotate-slow 30s linear infinite;
-  border-radius: 50%;
-}
-
-@keyframes rotate-slow { to { transform: rotate(360deg); } }
-
-.clouds-layer { position: absolute; inset: 0; z-index: 3; }
-
-.cloud {
-  position: absolute;
-  background: linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%);
-  border-radius: 50px;
-  filter: blur(10px);
-}
-
-.cloud.c1 { width: 60px; height: 20px; top: 20px; left: -80px; animation: drift 35s linear infinite; }
-.cloud.c2 { width: 45px; height: 15px; top: 40px; left: -80px; animation: drift 28s linear infinite 5s; }
-.cloud.c3 { width: 55px; height: 18px; top: 60px; left: -80px; animation: drift 32s linear infinite 12s; }
-
-@media (min-width: 640px) {
-  .cloud.c1 { width: 80px; height: 26px; top: 25px; }
-  .cloud.c2 { width: 60px; height: 20px; top: 50px; }
-  .cloud.c3 { width: 70px; height: 24px; top: 75px; }
-}
-
-@keyframes drift { from { transform: translateX(0); } to { transform: translateX(calc(100vw + 100px)); } }
-
-/* Hills */
-.hills-layer {
-  position: absolute;
-  bottom: 50px;
   left: 0;
   right: 0;
-  z-index: 4;
-}
-
-@media (min-width: 640px) {
-  .hills-layer { bottom: 60px; }
-}
-
-.hill { position: absolute; border-radius: 50%; }
-.hill.h1 { width: 160px; height: 50px; background: #1a4a35; left: -20px; bottom: 0; }
-.hill.h2 { width: 150px; height: 45px; background: #145030; right: -15px; bottom: 0; }
-.hill.h3 { width: 120px; height: 40px; background: #0f3a24; left: 25%; bottom: 0; }
-.hill.h4 { width: 100px; height: 30px; background: #0a2a18; left: 55%; bottom: 0; }
-
-@media (min-width: 640px) {
-  .hill.h1 { width: 220px; height: 70px; left: -30px; }
-  .hill.h2 { width: 200px; height: 60px; right: -20px; }
-  .hill.h3 { width: 160px; height: 50px; }
-  .hill.h4 { width: 140px; height: 40px; }
-}
-
-/* Ground */
-.ground-layer {
-  position: absolute;
   bottom: 0;
-  left: 0;
-  right: 0;
-  height: 50px;
-  background: linear-gradient(180deg, #1a5c35 0%, #0d3a20 40%, #062a16 100%);
-  z-index: 5;
+  height: 98px;
+  background: linear-gradient(180deg, #7c4622 0%, #5b3319 45%, #3a1f11 100%);
 }
 
-@media (min-width: 640px) {
-  .ground-layer { height: 60px; }
-}
-
-.ground-texture {
+.fireflies {
   position: absolute;
   inset: 0;
-  background-image: 
-    radial-gradient(circle at 20% 30%, rgba(255,255,255,0.03) 1px, transparent 1px),
-    radial-gradient(circle at 60% 70%, rgba(255,255,255,0.02) 1px, transparent 1px);
-  background-size: 20px 20px;
+  pointer-events: none;
 }
 
-.grass-patches {
+.firefly {
   position: absolute;
-  top: -8px;
-  left: 0;
-  right: 0;
-  height: 12px;
+  bottom: 70px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #ffe0a2;
+  box-shadow: 0 0 10px rgba(255, 218, 148, 0.95);
+  animation: float-firefly 5.2s ease-in-out infinite;
 }
 
-@media (min-width: 640px) {
-  .grass-patches { top: -10px; height: 15px; }
+@keyframes float-firefly {
+  0%,
+  100% { transform: translate(0, 0); opacity: 0.3; }
+  40% { transform: translate(10px, -26px); opacity: 1; }
+  70% { transform: translate(-6px, -12px); opacity: 0.5; }
 }
 
-.grass-tuft {
-  position: absolute;
-  bottom: 0;
-  width: 3px;
-  height: 10px;
-  background: linear-gradient(to top, #145028, #22c55e, #4ade80);
-  border-radius: 3px 3px 0 0;
-  transform-origin: bottom center;
-  animation: sway 2.5s ease-in-out infinite;
-}
-
-@media (min-width: 640px) {
-  .grass-tuft { width: 4px; height: 12px; }
-}
-
-@keyframes sway { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
-
-/* Empty State */
 .empty-garden {
   position: absolute;
   inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: rgba(255, 239, 216, 0.96);
+  padding: 0 1rem;
 }
 
-.empty-plant { position: relative; animation: float-gentle 4s ease-in-out infinite; }
-
-@keyframes float-gentle { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-
-.pot { position: relative; }
-
-.pot-rim {
-  width: 44px;
-  height: 11px;
-  background: linear-gradient(180deg, #d97706 0%, #b45309 50%, #92400e 100%);
-  border-radius: 5px;
-  position: relative;
-  z-index: 2;
+.pot {
+  font-size: 2.8rem;
+  filter: drop-shadow(0 12px 18px rgba(44, 21, 10, 0.45));
+  animation: bob 3.4s ease-in-out infinite;
 }
 
-.pot-body {
-  width: 36px;
-  height: 32px;
-  background: linear-gradient(180deg, #b45309 0%, #92400e 50%, #78350f 100%);
-  border-radius: 3px 3px 12px 12px;
-  position: relative;
+@keyframes bob {
+  0%,
+  100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.plant {
+  position: absolute;
+  z-index: 3;
+}
+
+.plant.fresh {
+  animation: pop-in 0.9s cubic-bezier(0.2, 1, 0.25, 1);
+}
+
+@keyframes pop-in {
+  from { opacity: 0; transform: translateX(-50%) scale(0.35) translateY(18px); }
+  to { opacity: 1; transform: translateX(-50%) scale(1) translateY(0); }
+}
+
+.stem {
   margin: 0 auto;
-  margin-top: -3px;
-}
-
-.pot-shine {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  width: 6px;
-  height: 16px;
-  background: rgba(255,255,255,0.15);
-  border-radius: 3px;
-}
-
-.sprout {
-  position: absolute;
-  bottom: 34px;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.stem { width: 3px; height: 22px; background: linear-gradient(90deg, #15803d, #22c55e, #15803d); border-radius: 2px; margin: 0 auto; }
-
-.leaf {
-  position: absolute;
-  background: linear-gradient(135deg, #22c55e 0%, #4ade80 100%);
-  border-radius: 50% 50% 50% 20%;
-}
-
-.leaf.l1 { width: 11px; height: 8px; bottom: 14px; left: -8px; transform: rotate(-35deg); }
-.leaf.l2 { width: 10px; height: 7px; bottom: 17px; right: -6px; transform: rotate(30deg) scaleX(-1); }
-.leaf.l3 { width: 8px; height: 6px; bottom: 20px; left: -4px; transform: rotate(-20deg); }
-
-.dew {
-  position: absolute;
-  width: 3px;
-  height: 3px;
-  background: rgba(255,255,255,0.8);
-  border-radius: 50%;
-  animation: dew-shine 2s ease-in-out infinite;
-}
-
-.dew.d1 { top: 2px; left: 3px; }
-.dew.d2 { top: 6px; right: 5px; animation-delay: 0.5s; }
-
-@keyframes dew-shine { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
-
-.glow {
-  position: absolute;
-  top: -25px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 60px;
-  height: 60px;
-  background: radial-gradient(circle, rgba(34,197,94,0.3) 0%, transparent 70%);
-  animation: glow-pulse 3s ease-in-out infinite;
-}
-
-@keyframes glow-pulse { 0%, 100% { opacity: 0.5; transform: translateX(-50%) scale(1); } 50% { opacity: 1; transform: translateX(-50%) scale(1.2); } }
-
-.empty-text {
-  margin-top: 1.2rem;
-  color: #86efac;
-  font-size: 1rem;
-  font-weight: 600;
-}
-
-/* Plants */
-.plant { position: absolute; z-index: 6; }
-
-.plant.just-planted { animation: plant-appear 1s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
-
-@keyframes plant-appear { 0% { opacity: 0; transform: translateX(-50%) scale(0.3) translateY(30px); } 100% { opacity: 1; transform: translateX(-50%) scale(1) translateY(0); } }
-
-.plant-container {
-  position: relative;
-  width: 32px;
-  height: 65px;
-  animation: plant-sway 4s ease-in-out infinite;
-  transform-origin: bottom center;
-}
-
-@media (min-width: 640px) {
-  .plant-container { width: 40px; height: 80px; }
-}
-
-@keyframes plant-sway { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
-
-.stem-main {
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
   width: 4px;
-  height: 36px;
-  background: linear-gradient(90deg, #15803d, #22c55e, #15803d);
-  border-radius: 2px;
-}
-
-@media (min-width: 640px) {
-  .stem-main { width: 5px; height: 45px; }
-}
-
-.stem-layer { position: absolute; left: 1px; width: 2px; height: 100%; background: rgba(255,255,255,0.15); border-radius: 2px; }
-
-.leaves { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); }
-
-.leaf-element {
-  position: absolute;
-  background: linear-gradient(135deg, hsl(var(--hue, 140), 60%, 45%) 0%, hsl(var(--hue, 140), 70%, 55%) 100%);
-  border-radius: 50% 50% 50% 20%;
-}
-
-.le1 { width: 11px; height: 7px; left: -10px; bottom: 6px; transform: rotate(-35deg); }
-.le2 { width: 10px; height: 6px; right: -8px; bottom: 10px; transform: rotate(30deg) scaleX(-1); }
-.le3 { width: 8px; height: 5px; left: -6px; bottom: 16px; transform: rotate(-25deg); }
-.le4 { width: 9px; height: 5px; right: -5px; bottom: 19px; transform: rotate(20deg) scaleX(-1); }
-
-@media (min-width: 640px) {
-  .le1 { width: 14px; height: 9px; left: -12px; bottom: 8px; }
-  .le2 { width: 12px; height: 8px; right: -10px; bottom: 12px; }
-  .le3 { width: 10px; height: 7px; left: -8px; bottom: 20px; }
-  .le4 { width: 11px; height: 7px; right: -7px; bottom: 24px; }
-}
-
-.flower-head {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 26px;
-  height: 26px;
-}
-
-@media (min-width: 640px) {
-  .flower-head { width: 32px; height: 32px; }
-}
-
-.petals { position: absolute; inset: 0; }
-
-.petal {
-  position: absolute;
-  width: 10px;
-  height: 13px;
-  background: linear-gradient(135deg, hsl(var(--hue, 330), 75%, 65%) 0%, hsl(var(--hue, 330), 60%, 55%) 100%);
-  border-radius: 50%;
+  height: 38px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, hsl(var(--hue), 62%, 45%), hsl(var(--hue), 45%, 31%));
+  animation: sway 4s ease-in-out infinite;
   transform-origin: bottom center;
 }
 
-@media (min-width: 640px) {
-  .petal { width: 12px; height: 16px; }
+@keyframes sway {
+  0%,
+  100% { transform: rotate(-2.5deg); }
+  50% { transform: rotate(2.5deg); }
 }
 
-.p1 { bottom: 0; left: 50%; transform: translateX(-50%) rotate(0deg); }
-.p2 { bottom: 2px; left: 60%; transform: rotate(45deg); }
-.p3 { bottom: 5px; right: 2px; transform: rotate(90deg); }
-.p4 { bottom: 10px; right: 0; transform: rotate(135deg); }
-.p5 { bottom: 14px; right: 2px; transform: rotate(180deg); }
-.p6 { bottom: 16px; left: 4px; transform: rotate(225deg); }
-.p7 { bottom: 14px; left: 0; transform: rotate(270deg); }
-.p8 { bottom: 8px; left: 2px; transform: rotate(315deg); }
-
-.flower-center {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 12px;
-  height: 12px;
-  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
-  border-radius: 50%;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-content: center;
-  gap: 1px;
-  padding: 2px;
-}
-
-@media (min-width: 640px) {
-  .flower-center { width: 14px; height: 14px; }
-}
-
-.center-dot { width: 2px; height: 2px; background: #78350f; border-radius: 50%; }
-
-@media (min-width: 640px) {
-  .center-dot { width: 3px; height: 3px; }
+.bloom {
+  margin-top: -14px;
+  font-size: 1.35rem;
+  text-align: center;
+  filter: drop-shadow(0 8px 8px rgba(44, 19, 8, 0.4));
 }
 
 .plant-glow {
   position: absolute;
-  top: -8px;
+  top: -12px;
   left: 50%;
   transform: translateX(-50%);
-  width: 40px;
-  height: 40px;
-  background: radial-gradient(circle, hsla(var(--hue, 330), 80%, 65%, 0.4) 0%, transparent 70%);
-  animation: glow-flower 2s ease-in-out infinite;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: radial-gradient(circle, hsla(var(--hue), 88%, 68%, 0.36) 0%, transparent 70%);
 }
 
-@keyframes glow-flower { 0%, 100% { opacity: 0.5; transform: translateX(-50%) scale(1); } 50% { opacity: 1; transform: translateX(-50%) scale(1.3); } }
-
-/* Particles */
-.sparkle-overlay { position: absolute; inset: 0; z-index: 20; pointer-events: none; }
-
-.sparkle-particle {
+.sparkle-overlay {
   position: absolute;
-  width: 5px;
-  height: 5px;
-  background: #fff;
-  border-radius: 50%;
-  animation: sparkle-burst 1.5s ease-out forwards;
-  box-shadow: 0 0 8px #fff, 0 0 16px #fef08a;
+  inset: 0;
+  pointer-events: none;
 }
 
-@keyframes sparkle-burst { 0% { opacity: 0; transform: scale(0); } 30% { opacity: 1; transform: scale(1.5); } 100% { opacity: 0; transform: scale(0) translateY(-25px); } }
-
-.firefly {
+.spark {
   position: absolute;
-  width: 3px;
-  height: 3px;
-  background: #fef08a;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
-  box-shadow: 0 0 6px #fef08a, 0 0 12px #fef08a;
-  animation: fly 5s ease-in-out infinite;
+  background: #fff5d5;
+  box-shadow: 0 0 10px rgba(255, 239, 194, 0.95);
+  animation: burst 1.2s ease-out forwards;
 }
 
-@media (min-width: 640px) {
-  .firefly { width: 4px; height: 4px; }
+@keyframes burst {
+  0% { opacity: 0; transform: translateY(0) scale(0.2); }
+  40% { opacity: 1; transform: translateY(-16px) scale(1.2); }
+  100% { opacity: 0; transform: translateY(-30px) scale(0.6); }
 }
 
-.firefly.faint { opacity: 0.6; }
-
-@keyframes fly { 0%, 100% { opacity: 0; transform: translate(0, 0) scale(0.5); } 25% { opacity: 1; transform: translate(12px, -16px) scale(1); } 50% { opacity: 0.6; transform: translate(-8px, -28px) scale(0.8); } 75% { opacity: 1; transform: translate(16px, -12px) scale(1.2); } }
-
-.dust { position: absolute; width: 2px; height: 2px; background: rgba(255,255,255,0.4); border-radius: 50%; animation: float-dust 8s ease-in-out infinite; }
-
-@keyframes float-dust { 0%, 100% { opacity: 0; transform: translateY(0); } 50% { opacity: 0.6; transform: translateY(-16px); } }
-
-/* Showcase */
-.plant-showcase {
-  margin-top: 1.25rem;
-  padding: 0.85rem;
-  background: rgba(0,0,0,0.2);
-  border-radius: 16px;
-  border: 1px solid rgba(255,255,255,0.08);
+.sparkle-enter-active,
+.sparkle-leave-active {
+  transition: opacity 0.2s ease;
 }
 
-@media (min-width: 640px) {
-  .plant-showcase { margin-top: 1.5rem; padding: 1rem; border-radius: 18px; }
-}
-
-.plant-evolution { display: flex; flex-direction: column; gap: 0.4rem; }
-
-@media (min-width: 640px) {
-  .plant-evolution { gap: 0.5rem; }
-}
-
-.evolution-row {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem;
-  background: rgba(255,255,255,0.04);
-  border-radius: 10px;
-  transition: all 0.2s;
-}
-
-@media (min-width: 640px) {
-  .evolution-row { padding: 0.6rem; gap: 0.75rem; border-radius: 12px; }
-}
-
-.evolution-row.locked { opacity: 0.35; }
-.evolution-row:not(.locked):hover { background: rgba(255,255,255,0.08); }
-
-.plant-emoji { font-size: 1.1rem; width: 26px; text-align: center; }
-
-@media (min-width: 640px) {
-  .plant-emoji { font-size: 1.3rem; width: 30px; }
-}
-
-.evolution-stages { display: flex; gap: 3px; }
-
-.stage-dot {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.1);
-  transition: all 0.3s;
-}
-
-@media (min-width: 640px) {
-  .stage-dot { width: 22px; height: 22px; gap: 4px; }
-}
-
-.stage-dot.active {
-  background: linear-gradient(135deg, #22c55e, #4ade80);
-  box-shadow: 0 0 8px rgba(34,197,94,0.5);
-}
-
-.plant-name { flex: 1; font-size: 0.8rem; color: #e2e8f0; }
-
-@media (min-width: 640px) {
-.plant-name { font-size: 0.85rem; }
+.sparkle-enter-from,
+.sparkle-leave-to {
+  opacity: 0;
 }
 
 .activity-box {
-  margin-top: 1rem;
-  padding: 0.85rem;
-  border-radius: 16px;
-  background: rgba(0,0,0,0.2);
-  border: 1px solid rgba(255,255,255,0.1);
+  margin-top: 0.9rem;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 218, 172, 0.18);
+  background: rgba(72, 34, 15, 0.52);
+  padding: 0.75rem;
 }
 
 .activity-tabs {
@@ -2239,50 +1528,56 @@ input:focus, select:focus {
   gap: 0.45rem;
 }
 
-.activity-tabs button {
-  padding: 0.45rem 0.8rem;
+.tab.active {
+  border-color: rgba(255, 218, 149, 0.7);
+  background: linear-gradient(145deg, rgba(255, 204, 128, 0.3), rgba(208, 101, 40, 0.28));
 }
 
-.activity-tabs button.active {
-  background: linear-gradient(135deg, rgba(34,197,94,0.35) 0%, rgba(16,185,129,0.25) 100%);
-  border-color: rgba(134,239,172,0.45);
+.stats-panel {
+  margin-top: 0.7rem;
 }
 
-.basic-stats-grid {
-  margin-top: 0.75rem;
+.mini-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.45rem;
 }
 
 .mini-stat {
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 10px;
-  padding: 0.45rem 0.55rem;
+  border-radius: 12px;
+  padding: 0.5rem 0.58rem;
+  background: rgba(255, 220, 168, 0.12);
+  border: 1px solid rgba(255, 222, 182, 0.18);
 }
 
-.mini-label {
+.mini-stat span {
   display: block;
-  color: #94a3b8;
-  font-size: 0.67rem;
+  color: rgba(255, 235, 209, 0.86);
+  font-size: 0.68rem;
   text-transform: uppercase;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.35px;
 }
 
-.mini-value {
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: #f8fafc;
+.mini-stat strong {
+  display: block;
+  margin-top: 0.16rem;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 1.14rem;
+  line-height: 1;
 }
 
-.streak-history {
-  margin-top: 0.75rem;
+.streak-chart {
+  margin-top: 0.74rem;
 }
 
-.streak-history-grid {
+.streak-chart p {
+  margin: 0;
+  font-size: 0.75rem;
+  color: rgba(255, 240, 220, 0.88);
+}
+
+.streak-bars {
   margin-top: 0.45rem;
-  height: 90px;
   display: grid;
   grid-template-columns: repeat(10, minmax(0, 1fr));
   gap: 0.3rem;
@@ -2291,36 +1586,40 @@ input:focus, select:focus {
 
 .streak-day {
   display: grid;
-  gap: 0.2rem;
+  gap: 0.18rem;
   justify-items: center;
 }
 
 .streak-day span {
-  font-size: 0.6rem;
-  color: #94a3b8;
+  font-size: 0.58rem;
+  color: rgba(255, 230, 191, 0.78);
 }
 
-.streak-bar {
+.bar {
   width: 100%;
-  min-height: 16%;
+  min-height: 16px;
   border-radius: 6px;
-  background: rgba(255,255,255,0.14);
+  background: rgba(255, 216, 166, 0.2);
 }
 
-.streak-bar.active {
-  background: linear-gradient(180deg, #4ade80 0%, #22c55e 100%);
+.bar.active {
+  background: linear-gradient(180deg, #ffd58c 0%, #f29a4a 100%);
 }
 
 .history-panel {
-  margin-top: 0.7rem;
+  margin-top: 0.66rem;
 }
 
 .history-empty {
-  color: #64748b;
-  font-size: 0.82rem;
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(255, 236, 211, 0.8);
 }
 
 .history-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
   display: grid;
   gap: 0.35rem;
 }
@@ -2329,47 +1628,105 @@ input:focus, select:focus {
   display: grid;
   grid-template-columns: auto auto 1fr;
   align-items: center;
-  gap: 0.45rem;
-  font-size: 0.8rem;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 10px;
-  padding: 0.45rem 0.55rem;
+  gap: 0.4rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 219, 177, 0.2);
+  background: rgba(255, 226, 186, 0.08);
 }
 
-.history-type {
+.badge {
   text-transform: capitalize;
   border-radius: 999px;
-  padding: 0.15rem 0.5rem;
-  font-size: 0.66rem;
+  padding: 0.15rem 0.42rem;
+  font-size: 0.64rem;
   font-weight: 700;
-  letter-spacing: 0.4px;
 }
 
-.history-type.focus {
-  background: rgba(34,197,94,0.2);
-  color: #86efac;
+.badge.focus {
+  color: #4a230f;
+  background: rgba(255, 213, 136, 0.9);
 }
 
-.history-type.break {
-  background: rgba(56,189,248,0.2);
-  color: #7dd3fc;
+.badge.break {
+  color: #fff3dd;
+  background: rgba(191, 111, 52, 0.8);
 }
 
-.history-duration {
-  color: #e2e8f0;
+.duration {
+  color: rgba(255, 240, 215, 0.94);
   font-weight: 600;
+  font-size: 0.78rem;
 }
 
-.history-time {
+.time {
   justify-self: end;
-  color: #94a3b8;
-  font-size: 0.73rem;
+  color: rgba(255, 228, 196, 0.74);
+  font-size: 0.72rem;
 }
 
-.hint { margin-top: 0.85rem; color: #64748b; font-size: 0.8rem; text-align: center; }
+@media (max-width: 639px) {
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
 
 @media (min-width: 640px) {
-  .hint { margin-top: 1rem; font-size: 0.85rem; }
+  .app {
+    padding: 1.4rem;
+  }
+
+  .timer-panel,
+  .garden-panel {
+    padding: 1.2rem;
+  }
+
+  .timer-shell {
+    padding: 1.6rem 1rem;
+  }
+
+  .btn,
+  .chip,
+  .tab {
+    padding: 0.64rem 1.05rem;
+    font-size: 0.86rem;
+  }
+
+  .inputs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 980px) {
+  .workspace {
+    grid-template-columns: minmax(320px, 0.9fr) minmax(540px, 1.35fr);
+    align-items: start;
+  }
+
+  .timer-panel {
+    position: sticky;
+    top: 1rem;
+  }
+
+  .garden-canvas {
+    height: 370px;
+  }
+
+  .stat-card {
+    padding: 0.8rem 0.6rem;
+  }
+
+  .stat-value {
+    font-size: 1.7rem;
+  }
+
+  .progress-labels {
+    font-size: 0.78rem;
+  }
+
+  .history-item {
+    padding: 0.5rem 0.6rem;
+  }
 }
 </style>

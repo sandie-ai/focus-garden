@@ -52,16 +52,6 @@ create table if not exists public.garden_history (
 );
 
 create index if not exists garden_history_user_completed_idx on public.garden_history (user_id, completed_at desc);
-
-create table if not exists public.garden_todos (
-  id uuid primary key default gen_random_uuid(),
-  user_id text not null,
-  todo_text text not null,
-  completed boolean not null default false,
-  created_at timestamptz not null default timezone('utc', now())
-);
-
-create index if not exists garden_todos_user_created_idx on public.garden_todos (user_id, created_at asc);
 `
 
   const response = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
