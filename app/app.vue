@@ -839,15 +839,16 @@ onBeforeUnmount(() => {
 
         <div class="garden-canvas pixel-frame">
           <div class="sky" />
-          <div class="stars">
-            <span v-for="i in 40" :key="`s-${i}`" class="star" :style="{ left: `${(i * 17 + 9) % 100}%`, top: `${(i * 13 + 7) % 52}%` }" />
-          </div>
-          <div class="moon" />
+          <div class="sun-glow" />
+          <div class="sun" />
+          <div class="haze haze-a" />
+          <div class="haze haze-b" />
           <div class="cloud cloud-a" />
           <div class="cloud cloud-b" />
-          <div class="fireflies">
-            <span v-for="i in 10" :key="`f-${i}`" class="firefly" :style="{ left: `${8 + i * 9}%`, animationDelay: `${i * 0.3}s` }" />
+          <div class="birds">
+            <span v-for="i in 7" :key="`b-${i}`" class="bird" :style="{ left: `${12 + i * 11}%`, top: `${10 + (i * 7) % 22}%`, animationDelay: `${i * 0.4}s` }" />
           </div>
+          <div class="horizon" />
           <div class="ground" />
 
           <div v-if="garden.totalSessions === 0" class="empty-garden pixel-frame">
@@ -945,7 +946,7 @@ body,
 }
 
 body {
-  background: #0f0f23;
+  background: linear-gradient(180deg, #ff8fa3 0%, #ff6b6b 35%, #fec89a 70%, #ffd93d 100%);
 }
 </style>
 
@@ -953,16 +954,21 @@ body {
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
 
 :root {
-  --night-0: #0f0f23;
-  --night-1: #1a1a2e;
-  --ui-0: #2d2d44;
-  --ui-1: #3d3d5c;
-  --cream: #f5f5dc;
-  --amber: #ffd93d;
-  --amber-2: #ffb347;
+  --warm-dark: #2d2a4a;
+  --warm-dark-2: #3d3a5c;
+  --coral-0: #ff6b6b;
+  --coral-1: #e85d75;
+  --terracotta: #f4a261;
+  --gold: #ffd93d;
+  --gold-2: #ffbe3d;
+  --pink: #ff8fa3;
+  --soft-purple: #b8a9c9;
   --green-0: #4ade80;
   --green-1: #22c55e;
-  --ink: #101018;
+  --green-2: #86efac;
+  --cream: #fff5db;
+  --ink: #1d1734;
+  --ink-soft: #3a3157;
 }
 
 * {
@@ -973,9 +979,11 @@ body {
 .app {
   min-height: 100vh;
   padding: 14px;
-  color: var(--cream);
+  color: var(--ink);
   font-family: 'VT323', 'Courier New', monospace;
-  background: var(--night-0);
+  background:
+    radial-gradient(circle at 20% -10%, #ffd66d 0%, rgba(255, 214, 109, 0) 38%),
+    linear-gradient(180deg, #ff8fa3 0%, #ff6b6b 28%, #fec89a 58%, #ffd93d 100%);
   position: relative;
   overflow: hidden;
 }
@@ -986,8 +994,8 @@ body {
   inset: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(to bottom, transparent 96%, rgba(255, 255, 255, 0.03) 96%),
-    linear-gradient(to right, transparent 96%, rgba(255, 255, 255, 0.03) 96%);
+    linear-gradient(to bottom, transparent 96%, rgba(45, 42, 74, 0.08) 96%),
+    linear-gradient(to right, transparent 96%, rgba(45, 42, 74, 0.08) 96%);
   background-size: 4px 4px;
 }
 
@@ -1000,21 +1008,21 @@ body {
 }
 
 .pixel-panel {
-  border: 3px solid #08080f;
-  background: var(--ui-0);
-  box-shadow: 4px 4px 0 #08080f;
+  border: 3px solid var(--warm-dark);
+  background: linear-gradient(180deg, #ffd7ac 0%, #f4a261 100%);
+  box-shadow: 4px 4px 0 var(--warm-dark);
 }
 
 .pixel-frame {
-  border: 2px solid #11111a;
-  background: var(--ui-1);
-  box-shadow: inset -2px -2px 0 rgba(0, 0, 0, 0.35), inset 2px 2px 0 rgba(255, 255, 255, 0.08);
+  border: 2px solid var(--warm-dark);
+  background: #ffe5c6;
+  box-shadow: inset -2px -2px 0 rgba(45, 42, 74, 0.25), inset 2px 2px 0 rgba(255, 255, 255, 0.4);
 }
 
 .pixel-frame-inset {
-  border: 2px solid #11111a;
-  background: #232339;
-  box-shadow: inset 2px 2px 0 rgba(255, 255, 255, 0.06);
+  border: 2px solid var(--warm-dark);
+  background: #fff0dc;
+  box-shadow: inset 2px 2px 0 rgba(255, 255, 255, 0.55);
 }
 
 .topbar {
@@ -1035,7 +1043,7 @@ body {
 
 .brand-icon {
   font-family: 'Press Start 2P', monospace;
-  color: var(--green-0);
+  color: var(--warm-dark);
   font-size: 14px;
 }
 
@@ -1044,12 +1052,13 @@ body {
   font-family: 'Press Start 2P', monospace;
   font-size: 12px;
   letter-spacing: 1px;
+  color: var(--warm-dark);
 }
 
 .brand-subtitle {
   margin: 4px 0 0;
   font-size: 24px;
-  color: #c8c7aa;
+  color: var(--ink-soft);
 }
 
 .status-box {
@@ -1057,20 +1066,21 @@ body {
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  border: 2px solid #11111a;
-  background: #26263d;
+  border: 2px solid var(--warm-dark);
+  background: #ffddb2;
   font-size: 22px;
   text-transform: uppercase;
+  color: var(--ink);
 }
 
 .status-led {
   width: 10px;
   height: 10px;
-  background: #6f6f84;
+  background: #9f92b0;
 }
 
 .status-box.running .status-led {
-  background: var(--amber);
+  background: var(--gold);
   animation: blink 1s steps(2) infinite;
 }
 
@@ -1092,13 +1102,13 @@ h1 {
   font-family: 'Press Start 2P', monospace;
   font-size: 16px;
   line-height: 1.4;
-  color: var(--amber);
+  color: var(--warm-dark);
 }
 
 .mode-hint {
   margin: 0 0 10px;
   font-size: 24px;
-  color: #d5d3b8;
+  color: var(--ink-soft);
 }
 
 .mode-row,
@@ -1125,32 +1135,32 @@ h1 {
 }
 
 .pixel-btn {
-  border: 2px solid #090910;
-  background: #32324c;
-  color: var(--cream);
+  border: 2px solid var(--warm-dark);
+  background: linear-gradient(180deg, #ff8fa3 0%, #e85d75 100%);
+  color: #fff8ef;
   padding: 8px 6px;
   font-family: 'Press Start 2P', monospace;
   font-size: 10px;
   text-transform: uppercase;
   cursor: pointer;
-  box-shadow: 2px 2px 0 #090910;
+  box-shadow: 2px 2px 0 var(--warm-dark);
 }
 
 .pixel-btn:hover {
-  background: #404064;
+  background: linear-gradient(180deg, #ffa3b2 0%, #ff6b6b 100%);
 }
 
 .pixel-btn:active {
   transform: translate(1px, 1px);
-  box-shadow: 1px 1px 0 #090910;
+  box-shadow: 1px 1px 0 var(--warm-dark);
 }
 
 .pixel-btn.active,
 .pixel-btn.primary,
 .mode-btn.active {
-  background: #5b4a1f;
-  color: #fff4b6;
-  border-color: #2d2108;
+  background: linear-gradient(180deg, #ffd93d 0%, #ffbe3d 100%);
+  color: var(--ink);
+  border-color: var(--warm-dark);
 }
 
 .pixel-btn.small {
@@ -1169,8 +1179,8 @@ h1 {
   font-size: clamp(26px, 5vw, 44px);
   line-height: 1;
   text-align: center;
-  color: var(--amber);
-  text-shadow: 2px 0 0 #533d02;
+  color: var(--warm-dark);
+  text-shadow: 2px 0 0 #ffe58e;
 }
 
 .timer-track,
@@ -1183,7 +1193,7 @@ h1 {
 .timer-fill,
 .progress-fill {
   height: 100%;
-  background: repeating-linear-gradient(90deg, var(--amber) 0 8px, var(--amber-2) 8px 16px);
+  background: repeating-linear-gradient(90deg, var(--gold) 0 8px, #ff8fa3 8px 16px);
 }
 
 .inputs,
@@ -1208,9 +1218,9 @@ label {
 input,
 select {
   width: 100%;
-  border: 2px solid #0f0f18;
-  background: #1f1f31;
-  color: var(--cream);
+  border: 2px solid var(--warm-dark);
+  background: #fff8ee;
+  color: var(--ink);
   padding: 6px;
   border-radius: 0;
   font-family: 'VT323', monospace;
@@ -1231,13 +1241,13 @@ select {
 .stat-card .label {
   display: block;
   font-size: 18px;
-  color: #c8c7aa;
+  color: var(--ink-soft);
 }
 
 .stat-card strong {
   font-family: 'Press Start 2P', monospace;
   font-size: 16px;
-  color: var(--green-0);
+  color: var(--warm-dark);
 }
 
 .progress-head {
@@ -1252,10 +1262,11 @@ select {
   min-height: 300px;
   position: relative;
   overflow: hidden;
-  background: #141428;
+  background: #ffba8a;
 }
 
 .sky,
+.horizon,
 .ground {
   position: absolute;
   left: 0;
@@ -1265,47 +1276,74 @@ select {
 .sky {
   top: 0;
   bottom: 35%;
-  background: #101a3a;
+  background: linear-gradient(180deg, #b8a9c9 0%, #ff8fa3 30%, #ff6b6b 58%, #fec89a 82%, #ffd93d 100%);
+}
+
+.sun-glow {
+  position: absolute;
+  width: 170px;
+  height: 170px;
+  right: 7%;
+  top: 8%;
+  background: radial-gradient(circle, rgba(255, 217, 61, 0.8) 0%, rgba(255, 217, 61, 0) 72%);
+}
+
+.sun {
+  position: absolute;
+  right: 13%;
+  top: 16%;
+  width: 44px;
+  height: 44px;
+  background: #ffd93d;
+  box-shadow: 3px 3px 0 #ff8fa3;
+}
+
+.haze {
+  position: absolute;
+  height: 6px;
+  background: rgba(255, 248, 209, 0.55);
+}
+
+.haze-a {
+  left: 8%;
+  right: 14%;
+  top: 40%;
+}
+
+.haze-b {
+  left: 15%;
+  right: 24%;
+  top: 48%;
+}
+
+.horizon {
+  bottom: 34%;
+  height: 7%;
+  background: linear-gradient(180deg, rgba(255, 160, 108, 0.2) 0%, rgba(255, 143, 163, 0.6) 100%);
 }
 
 .ground {
   bottom: 0;
   height: 35%;
-  background: #1d4a34;
-  border-top: 3px solid #2e7a53;
-}
-
-.star {
-  position: absolute;
-  width: 3px;
-  height: 3px;
-  background: #f9e8a8;
-}
-
-.moon {
-  position: absolute;
-  right: 10%;
-  top: 10%;
-  width: 22px;
-  height: 22px;
-  background: #ffe08a;
-  box-shadow: -4px 4px 0 #d49c3d;
+  background: repeating-linear-gradient(90deg, var(--green-1) 0 16px, var(--green-0) 16px 32px);
+  border-top: 3px solid var(--green-2);
 }
 
 .cloud {
   position: absolute;
-  width: 40px;
-  height: 12px;
-  background: #7a7a9b;
+  width: 50px;
+  height: 14px;
+  background: #fff3da;
+  box-shadow: 2px 2px 0 #ff8fa3;
 }
 
 .cloud::before,
 .cloud::after {
   content: '';
   position: absolute;
-  width: 12px;
-  height: 12px;
-  background: #7a7a9b;
+  width: 14px;
+  height: 14px;
+  background: #fff3da;
 }
 
 .cloud::before {
@@ -1320,23 +1358,29 @@ select {
 
 .cloud-a {
   left: 10%;
-  top: 18%;
+  top: 17%;
   animation: drift 16s steps(40) infinite;
 }
 
 .cloud-b {
-  left: 60%;
-  top: 24%;
+  left: 64%;
+  top: 27%;
   animation: drift 22s steps(44) infinite reverse;
 }
 
-.firefly {
+.birds {
   position: absolute;
-  top: 54%;
-  width: 4px;
+  inset: 0;
+}
+
+.bird {
+  position: absolute;
+  width: 10px;
   height: 4px;
-  background: var(--amber);
-  animation: twinkle 1.8s steps(2) infinite;
+  border-top: 2px solid var(--warm-dark);
+  border-radius: 50%;
+  transform: scaleX(1.15);
+  animation: glide 6s steps(20) infinite;
 }
 
 .empty-garden {
@@ -1390,7 +1434,7 @@ select {
   top: 2px;
   width: 6px;
   height: 6px;
-  background: #ffe08a;
+  background: #fff2a7;
 }
 
 .petal {
@@ -1442,7 +1486,7 @@ select {
 
 .mini-stat span {
   font-size: 20px;
-  color: #c8c7aa;
+  color: var(--ink-soft);
 }
 
 .mini-stat strong {
@@ -1478,12 +1522,12 @@ select {
 .bar {
   width: 100%;
   min-height: 12px;
-  background: #4b4b66;
-  border: 2px solid #101018;
+  background: #d7c5b5;
+  border: 2px solid var(--warm-dark);
 }
 
 .bar.active {
-  background: var(--green-1);
+  background: linear-gradient(180deg, var(--green-0) 0%, var(--green-1) 100%);
 }
 
 .history-list {
@@ -1505,8 +1549,8 @@ select {
 .pixel-check {
   width: 10px;
   height: 10px;
-  border: 2px solid #0f0f18;
-  background: #222239;
+  border: 2px solid var(--warm-dark);
+  background: #ffe9cf;
 }
 
 .pixel-check.checked {
@@ -1515,20 +1559,20 @@ select {
 
 .badge {
   padding: 2px 6px;
-  border: 2px solid #0f0f18;
+  border: 2px solid var(--warm-dark);
   font-family: 'Press Start 2P', monospace;
   font-size: 8px;
   text-transform: uppercase;
 }
 
 .badge.focus {
-  background: #244832;
-  color: #b9ffcf;
+  background: #ddffe8;
+  color: #0f5132;
 }
 
 .badge.break {
-  background: #5a4425;
-  color: #ffe5a5;
+  background: #fff0bf;
+  color: #5f3a0a;
 }
 
 .duration,
@@ -1539,16 +1583,16 @@ select {
 
 .time {
   justify-self: end;
-  color: #cac8af;
+  color: var(--ink-soft);
 }
 
 @keyframes blink {
   50% { opacity: 0.35; }
 }
 
-@keyframes twinkle {
-  0%, 100% { opacity: 0.25; transform: translateY(0); }
-  50% { opacity: 1; transform: translateY(-2px); }
+@keyframes glide {
+  0%, 100% { transform: translateY(0) scaleX(1.15); opacity: 0.7; }
+  50% { transform: translateY(-2px) scaleX(1.15); opacity: 1; }
 }
 
 @keyframes pop {
