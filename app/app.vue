@@ -644,23 +644,39 @@ function randomBetween(min: number, max: number) {
 }
 
 function buildTimerCatPathPoints() {
-  const pointCount = 5 + Math.floor(Math.random() * 3)
-  const radiusX = randomBetween(44, 62)
-  const radiusY = randomBetween(20, 34)
-  const jitter = randomBetween(3, 9)
-  const startAngle = randomBetween(0, Math.PI * 2)
-  const direction = Math.random() > 0.5 ? 1 : -1
+  const pointCount = 7
+  const minX = -64
+  const maxX = 64
+  const minY = -36
+  const maxY = 28
+  const minStepDistance = 18
+  const maxAttemptsPerPoint = 20
   const points: Array<{ x: number, y: number }> = []
 
   for (let index = 0; index < pointCount; index += 1) {
-    const progress = index / pointCount
-    const angle = startAngle + direction * progress * Math.PI * 2
-    const x = Math.cos(angle) * radiusX + randomBetween(-jitter, jitter)
-    const y = Math.sin(angle) * radiusY + randomBetween(-jitter * 0.7, jitter * 0.7)
-    points.push({
-      x: Math.max(-64, Math.min(64, Math.round(x))),
-      y: Math.max(-36, Math.min(28, Math.round(y))),
-    })
+    let nextPoint = {
+      x: Math.round(randomBetween(minX, maxX)),
+      y: Math.round(randomBetween(minY, maxY)),
+    }
+    let attempts = 0
+
+    while (attempts < maxAttemptsPerPoint) {
+      const previousPoint = points[index - 1]
+      if (!previousPoint) break
+
+      const dx = nextPoint.x - previousPoint.x
+      const dy = nextPoint.y - previousPoint.y
+      const distance = Math.hypot(dx, dy)
+      if (distance >= minStepDistance) break
+
+      nextPoint = {
+        x: Math.round(randomBetween(minX, maxX)),
+        y: Math.round(randomBetween(minY, maxY)),
+      }
+      attempts += 1
+    }
+
+    points.push(nextPoint)
   }
 
   return points
