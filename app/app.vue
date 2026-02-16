@@ -2,12 +2,27 @@
 import { computed, onMounted, ref, watch } from 'vue'
 
 type Mode = 'focus' | 'break'
+type ActivityTab = 'stats' | 'history'
 
 type GardenState = {
   totalSessions: number
   sessionsToday: number
   streakDays: number
   lastSessionDate: string | null
+}
+
+type HistoryEntry = {
+  id: string
+  sessionType: Mode
+  durationMinutes: number
+  completedAt: string
+}
+
+type TodoItem = {
+  id: string
+  todoText: string
+  completed: boolean
+  createdAt: string
 }
 
 type SupabaseGardenSessionRow = {
@@ -17,8 +32,23 @@ type SupabaseGardenSessionRow = {
   last_session_date: string | null
 }
 
+type SupabaseHistoryRow = {
+  id: string
+  session_type: Mode
+  duration_minutes: number
+  completed_at: string
+}
+
+type SupabaseTodoRow = {
+  id: string
+  todo_text: string
+  completed: boolean
+  created_at: string
+}
+
 const STORAGE_KEY = 'focus-garden:v1'
 const USER_KEY = 'focus-garden:user-id'
+const TODO_DAY_KEY = 'focus-garden:todo-day'
 
 const config = useRuntimeConfig()
 const supabaseUrl = String(config.public.supabaseUrl || '').replace(/\/+$/, '')
@@ -51,9 +81,7 @@ function createSupabaseClient(baseUrl: string, token: string) {
       method: 'GET',
       headers: headers(),
     })
-    if (!response.ok) {
-      throw new Error(`load failed with status ${response.status}`)
-    }
+    if (!response.ok) throw new Error(`load garden failed with status ${response.status}`)
 
     const rows = await response.json() as SupabaseGardenSessionRow[]
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : null
@@ -75,15 +103,125 @@ function createSupabaseClient(baseUrl: string, token: string) {
       headers: headers('resolution=merge-duplicates,return=minimal'),
       body: JSON.stringify(payload),
     })
-    if (!response.ok) {
-      throw new Error(`sync failed with status ${response.status}`)
+    if (!response.ok) throw new Error(`sync garden failed with status ${response.status}`)
+  }
+
+  const loadHistory = async (userId: string, limit = 30) => {
+    if (!enabled) return []
+    const query = new URLSearchParams({
+      select: 'id,session_type,duration_minutes,completed_at',
+      user_id: `eq.${userId}`,
+      order: 'completed_at.desc',
+      limit: String(limit),
+    })
+
+    const response = await fetch(`${normalizedBaseUrl}/rest/v1/garden_history?${query.toString()}`, {
+      method: 'GET',
+      headers: headers(),
+    })
+    if (!response.ok) throw new Error(`load history failed with status ${response.status}`)
+
+    const rows = await response.json() as SupabaseHistoryRow[]
+    return Array.isArray(rows) ? rows : []
+  }
+
+  const insertHistory = async (userId: string, entry: HistoryEntry) => {
+    if (!enabled) return
+    const payload = {
+      id: entry.id,
+      user_id: userId,
+      session_type: entry.sessionType,
+      duration_minutes: entry.durationMinutes,
+      completed_at: entry.completedAt,
     }
+
+    const response = await fetch(`${normalizedBaseUrl}/rest/v1/garden_history`, {
+      method: 'POST',
+      headers: headers('return=minimal'),
+      body: JSON.stringify(payload),
+    })
+    if (!response.ok) throw new Error(`insert history failed with status ${response.status}`)
+  }
+
+  const loadTodos = async (userId: string) => {
+    if (!enabled) return []
+    const query = new URLSearchParams({
+      select: 'id,todo_text,completed,created_at',
+      user_id: `eq.${userId}`,
+      order: 'created_at.asc',
+      limit: '3',
+    })
+
+    const response = await fetch(`${normalizedBaseUrl}/rest/v1/garden_todos?${query.toString()}`, {
+      method: 'GET',
+      headers: headers(),
+    })
+    if (!response.ok) throw new Error(`load todos failed with status ${response.status}`)
+
+    const rows = await response.json() as SupabaseTodoRow[]
+    return Array.isArray(rows) ? rows : []
+  }
+
+  const insertTodo = async (userId: string, item: TodoItem) => {
+    if (!enabled) return
+    const payload = {
+      id: item.id,
+      user_id: userId,
+      todo_text: item.todoText,
+      completed: item.completed,
+      created_at: item.createdAt,
+    }
+
+    const response = await fetch(`${normalizedBaseUrl}/rest/v1/garden_todos`, {
+      method: 'POST',
+      headers: headers('return=minimal'),
+      body: JSON.stringify(payload),
+    })
+    if (!response.ok) throw new Error(`insert todo failed with status ${response.status}`)
+  }
+
+  const updateTodo = async (userId: string, item: TodoItem) => {
+    if (!enabled) return
+    const query = new URLSearchParams({
+      id: `eq.${item.id}`,
+      user_id: `eq.${userId}`,
+    })
+
+    const response = await fetch(`${normalizedBaseUrl}/rest/v1/garden_todos?${query.toString()}`, {
+      method: 'PATCH',
+      headers: headers('return=minimal'),
+      body: JSON.stringify({
+        todo_text: item.todoText,
+        completed: item.completed,
+      }),
+    })
+    if (!response.ok) throw new Error(`update todo failed with status ${response.status}`)
+  }
+
+  const deleteTodo = async (userId: string, todoId: string) => {
+    if (!enabled) return
+    const query = new URLSearchParams({
+      id: `eq.${todoId}`,
+      user_id: `eq.${userId}`,
+    })
+
+    const response = await fetch(`${normalizedBaseUrl}/rest/v1/garden_todos?${query.toString()}`, {
+      method: 'DELETE',
+      headers: headers('return=minimal'),
+    })
+    if (!response.ok) throw new Error(`delete todo failed with status ${response.status}`)
   }
 
   return {
     enabled,
     loadGarden,
     upsertGarden,
+    loadHistory,
+    insertHistory,
+    loadTodos,
+    insertTodo,
+    updateTodo,
+    deleteTodo,
   }
 }
 
@@ -104,6 +242,10 @@ const garden = ref<GardenState>({
   streakDays: 0,
   lastSessionDate: null,
 })
+const history = ref<HistoryEntry[]>([])
+const todos = ref<TodoItem[]>([])
+const newTodoText = ref('')
+const activeActivityTab = ref<ActivityTab>('stats')
 
 const lofiStations = [
   { name: 'Lofi Girl 🎧', url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk', type: 'external' },
@@ -151,6 +293,111 @@ const progressToNext = computed(() => {
   return Math.max(0, Math.min(100, Math.round(ratio)))
 })
 
+const canAddTodo = computed(() => {
+  return todos.value.length < 3 && newTodoText.value.trim().length > 0
+})
+
+const recentHistory = computed(() => history.value.slice(0, 20))
+
+function countEntriesBetween(startInclusive: Date, endExclusive: Date) {
+  const startMs = startInclusive.getTime()
+  const endMs = endExclusive.getTime()
+  return history.value.filter((entry) => {
+    const completed = new Date(entry.completedAt).getTime()
+    return completed >= startMs && completed < endMs
+  }).length
+}
+
+function startOfWeek(date: Date) {
+  const start = new Date(date)
+  start.setHours(0, 0, 0, 0)
+  const day = (start.getDay() + 6) % 7
+  start.setDate(start.getDate() - day)
+  return start
+}
+
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1)
+}
+
+const weeklyStats = computed(() => {
+  const now = new Date()
+  const thisWeekStart = startOfWeek(now)
+  const nextWeekStart = new Date(thisWeekStart)
+  nextWeekStart.setDate(nextWeekStart.getDate() + 7)
+  const lastWeekStart = new Date(thisWeekStart)
+  lastWeekStart.setDate(lastWeekStart.getDate() - 7)
+
+  return {
+    thisWeek: countEntriesBetween(thisWeekStart, nextWeekStart),
+    lastWeek: countEntriesBetween(lastWeekStart, thisWeekStart),
+  }
+})
+
+const monthlyStats = computed(() => {
+  const now = new Date()
+  const thisMonthStart = startOfMonth(now)
+  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+
+  return {
+    thisMonth: countEntriesBetween(thisMonthStart, nextMonthStart),
+    lastMonth: countEntriesBetween(lastMonthStart, thisMonthStart),
+  }
+})
+
+function dayFromIsoTimestamp(isoValue: string) {
+  return isoValue.slice(0, 10)
+}
+
+const bestStreakFromHistory = computed(() => {
+  const focusDays = new Set(
+    history.value
+      .filter(entry => entry.sessionType === 'focus')
+      .map(entry => dayFromIsoTimestamp(entry.completedAt)),
+  )
+  const sorted = [...focusDays].sort()
+  let best = 0
+  let current = 0
+  let prev: string | null = null
+
+  for (const day of sorted) {
+    if (!prev) {
+      current = 1
+    } else {
+      const prevDate = new Date(prev)
+      const currentDate = new Date(day)
+      const delta = Math.round((currentDate.getTime() - prevDate.getTime()) / 86400000)
+      current = delta === 1 ? current + 1 : 1
+    }
+    best = Math.max(best, current)
+    prev = day
+  }
+
+  return best
+})
+
+const streakHistory = computed(() => {
+  const byDay: Record<string, number> = {}
+  for (const entry of history.value) {
+    if (entry.sessionType !== 'focus') continue
+    const day = dayFromIsoTimestamp(entry.completedAt)
+    byDay[day] = (byDay[day] || 0) + 1
+  }
+
+  return Array.from({ length: 10 }, (_, i) => {
+    const date = new Date()
+    date.setDate(date.getDate() - (9 - i))
+    const iso = date.toISOString().slice(0, 10)
+    const count = byDay[iso] || 0
+    return {
+      day: iso.slice(5),
+      count,
+      active: count > 0,
+    }
+  })
+})
+
 const plantTypes = [
   { id: 'flower', name: 'Flower', emoji: '🌸', hue: 330 },
   { id: 'sunflower', name: 'Sunflower', emoji: '🌻', hue: 45 },
@@ -165,7 +412,7 @@ const plants = computed(() => {
     id: i,
     type: plantTypes[i % plantTypes.length].id,
     hue: plantTypes[i % plantTypes.length].hue,
-    style: makePlantStyle(i)
+    style: makePlantStyle(i),
   }))
 })
 
@@ -197,6 +444,8 @@ function persist() {
     secondsLeft: secondsLeft.value,
     garden: garden.value,
     selectedStation: selectedStation.value,
+    history: history.value,
+    todos: todos.value,
   }))
 }
 
@@ -226,6 +475,33 @@ function sanitizeGardenState(value: unknown): GardenState {
   }
 }
 
+function sanitizeHistoryEntry(value: unknown): HistoryEntry | null {
+  const input = (value ?? {}) as Record<string, unknown>
+  const type = input.sessionType === 'break' ? 'break' : input.sessionType === 'focus' ? 'focus' : null
+  const completedAt = typeof input.completedAt === 'string' ? input.completedAt : null
+  if (!type || !completedAt) return null
+
+  return {
+    id: typeof input.id === 'string' ? input.id : `${Date.now()}-${Math.random()}`,
+    sessionType: type,
+    durationMinutes: Math.max(1, Number(input.durationMinutes ?? 0) || 1),
+    completedAt,
+  }
+}
+
+function sanitizeTodoItem(value: unknown): TodoItem | null {
+  const input = (value ?? {}) as Record<string, unknown>
+  const todoText = typeof input.todoText === 'string' ? input.todoText.trim() : ''
+  if (!todoText) return null
+
+  return {
+    id: typeof input.id === 'string' ? input.id : `${Date.now()}-${Math.random()}`,
+    todoText,
+    completed: Boolean(input.completed),
+    createdAt: typeof input.createdAt === 'string' ? input.createdAt : new Date().toISOString(),
+  }
+}
+
 function syncDailyCounters() {
   const today = todayISO()
   if (garden.value.lastSessionDate && garden.value.lastSessionDate !== today) {
@@ -233,6 +509,23 @@ function syncDailyCounters() {
     return true
   }
   return false
+}
+
+function syncTodoDailyReset() {
+  const today = todayISO()
+  const savedDay = localStorage.getItem(TODO_DAY_KEY)
+  let changed = false
+
+  if (savedDay !== today) {
+    todos.value = todos.value.map((item) => {
+      if (!item.completed) return item
+      changed = true
+      return { ...item, completed: false }
+    })
+    localStorage.setItem(TODO_DAY_KEY, today)
+  }
+
+  return changed
 }
 
 async function ensureSupabaseTable() {
@@ -249,21 +542,45 @@ async function ensureSupabaseTable() {
   }
 }
 
-async function loadGardenFromSupabase() {
+async function loadFromSupabase() {
   if (!supabaseEnabled) return null
 
   const userId = getOrCreateUserId()
 
   try {
-    const row = await supabaseClient.loadGarden(userId)
-    if (!row) return null
+    const [gardenRow, historyRows, todoRows] = await Promise.all([
+      supabaseClient.loadGarden(userId),
+      supabaseClient.loadHistory(userId, 40),
+      supabaseClient.loadTodos(userId),
+    ])
 
-    return sanitizeGardenState({
-      totalSessions: row.total_sessions,
-      sessionsToday: row.sessions_today,
-      streakDays: row.streak_days,
-      lastSessionDate: row.last_session_date,
-    })
+    return {
+      garden: gardenRow
+        ? sanitizeGardenState({
+            totalSessions: gardenRow.total_sessions,
+            sessionsToday: gardenRow.sessions_today,
+            streakDays: gardenRow.streak_days,
+            lastSessionDate: gardenRow.last_session_date,
+          })
+        : null,
+      history: historyRows
+        .map(row => sanitizeHistoryEntry({
+          id: row.id,
+          sessionType: row.session_type,
+          durationMinutes: row.duration_minutes,
+          completedAt: row.completed_at,
+        }))
+        .filter((entry): entry is HistoryEntry => entry !== null),
+      todos: todoRows
+        .map(row => sanitizeTodoItem({
+          id: row.id,
+          todoText: row.todo_text,
+          completed: row.completed,
+          createdAt: row.created_at,
+        }))
+        .filter((item): item is TodoItem => item !== null)
+        .slice(0, 3),
+    }
   } catch (error) {
     console.warn('[focus-garden] Could not load Supabase state. Using localStorage fallback.', error)
     return null
@@ -284,6 +601,46 @@ async function syncGardenToSupabase() {
     return false
   } finally {
     syncInProgress.value = false
+  }
+}
+
+async function syncHistoryEntryToSupabase(entry: HistoryEntry) {
+  if (!supabaseEnabled) return
+  const userId = getOrCreateUserId()
+  try {
+    await supabaseClient.insertHistory(userId, entry)
+  } catch (error) {
+    console.warn('[focus-garden] History sync failed. localStorage remains source of truth.', error)
+  }
+}
+
+async function syncTodoCreateToSupabase(item: TodoItem) {
+  if (!supabaseEnabled) return
+  const userId = getOrCreateUserId()
+  try {
+    await supabaseClient.insertTodo(userId, item)
+  } catch (error) {
+    console.warn('[focus-garden] Todo create sync failed. localStorage remains source of truth.', error)
+  }
+}
+
+async function syncTodoUpdateToSupabase(item: TodoItem) {
+  if (!supabaseEnabled) return
+  const userId = getOrCreateUserId()
+  try {
+    await supabaseClient.updateTodo(userId, item)
+  } catch (error) {
+    console.warn('[focus-garden] Todo update sync failed. localStorage remains source of truth.', error)
+  }
+}
+
+async function syncTodoDeleteToSupabase(todoId: string) {
+  if (!supabaseEnabled) return
+  const userId = getOrCreateUserId()
+  try {
+    await supabaseClient.deleteTodo(userId, todoId)
+  } catch (error) {
+    console.warn('[focus-garden] Todo delete sync failed. localStorage remains source of truth.', error)
   }
 }
 
@@ -318,8 +675,8 @@ function completeFocusSession() {
   if (newPlantIndices.length > 0) {
     newlyPlanted.value = newPlantIndices
     showSparkle.value = true
-    setTimeout(() => { 
-      newlyPlanted.value = [] 
+    setTimeout(() => {
+      newlyPlanted.value = []
       showSparkle.value = false
     }, 2500)
   }
@@ -330,10 +687,9 @@ function completeFocusSession() {
     const dLast = new Date(last)
     const dToday = new Date(today)
     const delta = Math.round((dToday.getTime() - dLast.getTime()) / 86400000)
-    if (delta === 0) {
-    } else if (delta === 1) {
+    if (delta === 1) {
       garden.value.streakDays += 1
-    } else {
+    } else if (delta > 1) {
       garden.value.streakDays = 1
     }
   }
@@ -343,8 +699,30 @@ function completeFocusSession() {
   void syncGardenToSupabase()
 }
 
+function createLocalId() {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.round(Math.random() * 1e9)}`
+}
+
+function recordCompletedSession(sessionType: Mode, durationMinutes: number) {
+  const entry: HistoryEntry = {
+    id: createLocalId(),
+    sessionType,
+    durationMinutes: Math.max(1, Number(durationMinutes) || 1),
+    completedAt: new Date().toISOString(),
+  }
+  history.value = [entry, ...history.value].slice(0, 100)
+  persist()
+  void syncHistoryEntryToSupabase(entry)
+}
+
 function onTimerDone() {
-  if (mode.value === 'focus') {
+  const completedSessionType = mode.value
+  const duration = completedSessionType === 'focus' ? focusMinutes.value : breakMinutes.value
+  recordCompletedSession(completedSessionType, duration)
+
+  if (completedSessionType === 'focus') {
     completeFocusSession()
     setMode('break')
   } else {
@@ -384,6 +762,50 @@ function applyPreset(focus: number, rest: number) {
   focusMinutes.value = focus
   breakMinutes.value = rest
   resetTimer()
+}
+
+function addTodo() {
+  const text = newTodoText.value.trim()
+  if (!text || todos.value.length >= 3) return
+
+  const item: TodoItem = {
+    id: createLocalId(),
+    todoText: text,
+    completed: false,
+    createdAt: new Date().toISOString(),
+  }
+  todos.value = [...todos.value, item]
+  newTodoText.value = ''
+  persist()
+  void syncTodoCreateToSupabase(item)
+}
+
+function toggleTodo(todoId: string) {
+  const idx = todos.value.findIndex(item => item.id === todoId)
+  if (idx < 0) return
+
+  const next = { ...todos.value[idx], completed: !todos.value[idx].completed }
+  todos.value.splice(idx, 1, next)
+  persist()
+  void syncTodoUpdateToSupabase(next)
+}
+
+function removeTodo(todoId: string) {
+  const idx = todos.value.findIndex(item => item.id === todoId)
+  if (idx < 0) return
+  todos.value.splice(idx, 1)
+  persist()
+  void syncTodoDeleteToSupabase(todoId)
+}
+
+function formatHistoryTime(iso: string) {
+  const date = new Date(iso)
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
 }
 
 async function toggleAudio() {
@@ -429,26 +851,50 @@ onMounted(async () => {
   const raw = localStorage.getItem(STORAGE_KEY)
   if (raw) {
     try {
-      const data = JSON.parse(raw)
+      const data = JSON.parse(raw) as Record<string, unknown>
       focusMinutes.value = Number(data.focusMinutes ?? 25)
       breakMinutes.value = Number(data.breakMinutes ?? 5)
-      mode.value = data.mode ?? 'focus'
+      mode.value = data.mode === 'break' ? 'break' : 'focus'
       secondsLeft.value = Number(data.secondsLeft ?? focusMinutes.value * 60)
-      selectedStation.value = data.selectedStation ?? lofiStations[1].url
+      selectedStation.value = String(data.selectedStation ?? lofiStations[1].url)
+
       if (data.garden) garden.value = sanitizeGardenState(data.garden)
-    } catch {}
+      if (Array.isArray(data.history)) {
+        history.value = data.history
+          .map(entry => sanitizeHistoryEntry(entry))
+          .filter((entry): entry is HistoryEntry => entry !== null)
+      }
+      if (Array.isArray(data.todos)) {
+        todos.value = data.todos
+          .map(item => sanitizeTodoItem(item))
+          .filter((item): item is TodoItem => item !== null)
+          .slice(0, 3)
+      }
+    } catch {
+      // Keep defaults if local storage is malformed.
+    }
   }
 
   await ensureSupabaseTable()
-  const supabaseState = await loadGardenFromSupabase()
+  const supabaseState = await loadFromSupabase()
   if (supabaseState) {
-    garden.value = supabaseState
+    if (supabaseState.garden) {
+      garden.value = supabaseState.garden
+    }
+    history.value = supabaseState.history
+    todos.value = supabaseState.todos
   }
 
   const dailyResetApplied = syncDailyCounters()
+  const todoResetApplied = syncTodoDailyReset()
   persist()
   if (dailyResetApplied) {
     void syncGardenToSupabase()
+  }
+  if (todoResetApplied) {
+    for (const item of todos.value) {
+      void syncTodoUpdateToSupabase(item)
+    }
   }
 })
 </script>
@@ -512,6 +958,31 @@ onMounted(async () => {
           {{ audioPlaying ? '⏹ Stop' : '🎵 Play' }}
         </button>
         <audio ref="audioRef" :src="selectedStation" preload="none" loop />
+      </div>
+
+      <div class="todos-box">
+        <div class="todos-header">
+          <h3>Daily Habits</h3>
+          <span>{{ todos.length }}/3</span>
+        </div>
+        <div class="todo-input-row">
+          <input
+            v-model="newTodoText"
+            type="text"
+            placeholder="Add a daily habit"
+            maxlength="60"
+            @keyup.enter="addTodo"
+          />
+          <button :disabled="!canAddTodo" @click="addTodo">Add</button>
+        </div>
+        <div v-if="todos.length === 0" class="todo-empty">No habits yet.</div>
+        <div v-else class="todo-list">
+          <label v-for="todo in todos" :key="todo.id" class="todo-item">
+            <input type="checkbox" :checked="todo.completed" @change="toggleTodo(todo.id)" />
+            <span :class="{ done: todo.completed }">{{ todo.todoText }}</span>
+            <button class="todo-remove" @click.prevent="removeTodo(todo.id)">✕</button>
+          </label>
+        </div>
       </div>
     </section>
 
@@ -714,6 +1185,62 @@ onMounted(async () => {
               />
             </div>
             <span class="plant-name">{{ plant.name }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="activity-box">
+        <div class="activity-tabs">
+          <button :class="{ active: activeActivityTab === 'stats' }" @click="activeActivityTab = 'stats'">Stats</button>
+          <button :class="{ active: activeActivityTab === 'history' }" @click="activeActivityTab = 'history'">History</button>
+        </div>
+
+        <div v-if="activeActivityTab === 'stats'" class="stats-panel">
+          <div class="basic-stats-grid">
+            <div class="mini-stat">
+              <span class="mini-label">This Week</span>
+              <span class="mini-value">{{ weeklyStats.thisWeek }}</span>
+            </div>
+            <div class="mini-stat">
+              <span class="mini-label">Last Week</span>
+              <span class="mini-value">{{ weeklyStats.lastWeek }}</span>
+            </div>
+            <div class="mini-stat">
+              <span class="mini-label">This Month</span>
+              <span class="mini-value">{{ monthlyStats.thisMonth }}</span>
+            </div>
+            <div class="mini-stat">
+              <span class="mini-label">Last Month</span>
+              <span class="mini-value">{{ monthlyStats.lastMonth }}</span>
+            </div>
+            <div class="mini-stat">
+              <span class="mini-label">Current Streak</span>
+              <span class="mini-value">{{ garden.streakDays }}</span>
+            </div>
+            <div class="mini-stat">
+              <span class="mini-label">Best Streak</span>
+              <span class="mini-value">{{ Math.max(bestStreakFromHistory, garden.streakDays) }}</span>
+            </div>
+          </div>
+          <div class="streak-history">
+            <h3>Streak History</h3>
+            <div class="streak-history-grid">
+              <div v-for="entry in streakHistory" :key="entry.day" class="streak-day">
+                <div class="streak-bar" :class="{ active: entry.active }" :style="{ height: `${Math.min(100, 25 + entry.count * 25)}%` }" />
+                <span>{{ entry.day }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="history-panel">
+          <div v-if="recentHistory.length === 0" class="history-empty">No completed sessions yet.</div>
+          <div v-else class="history-list">
+            <div v-for="entry in recentHistory" :key="entry.id" class="history-item">
+              <span class="history-type" :class="entry.sessionType">{{ entry.sessionType }}</span>
+              <span class="history-duration">{{ entry.durationMinutes }} min</span>
+              <span class="history-time">{{ formatHistoryTime(entry.completedAt) }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -922,6 +1449,13 @@ button:hover {
   box-shadow: 0 6px 20px rgba(0,0,0,0.25);
 }
 
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 .primary {
   background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
   border: none;
@@ -995,6 +1529,75 @@ input:focus, select:focus {
 
 .audio-box { margin-top: 0.85rem; display: grid; gap: 0.45rem; }
 .audio-btn { width: fit-content; justify-self: center; }
+
+.todos-box {
+  margin-top: 1rem;
+  padding: 0.8rem;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.09);
+  background: rgba(0,0,0,0.2);
+}
+
+.todos-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  color: #cbd5e1;
+  font-size: 0.8rem;
+}
+
+.todo-input-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.45rem;
+  margin-bottom: 0.55rem;
+}
+
+.todo-input-row button {
+  padding: 0.55rem 0.8rem;
+}
+
+.todo-empty {
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+.todo-list {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 0.45rem 0.55rem;
+  color: #e2e8f0;
+}
+
+.todo-item input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+}
+
+.todo-item span {
+  flex: 1;
+  font-size: 0.85rem;
+}
+
+.todo-item span.done {
+  text-decoration: line-through;
+  color: #94a3b8;
+}
+
+.todo-remove {
+  padding: 0.2rem 0.45rem;
+  border-radius: 8px;
+}
 
 /* Garden Panel */
 .garden-header {
@@ -1620,7 +2223,148 @@ input:focus, select:focus {
 .plant-name { flex: 1; font-size: 0.8rem; color: #e2e8f0; }
 
 @media (min-width: 640px) {
-  .plant-name { font-size: 0.85rem; }
+.plant-name { font-size: 0.85rem; }
+}
+
+.activity-box {
+  margin-top: 1rem;
+  padding: 0.85rem;
+  border-radius: 16px;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.activity-tabs {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.activity-tabs button {
+  padding: 0.45rem 0.8rem;
+}
+
+.activity-tabs button.active {
+  background: linear-gradient(135deg, rgba(34,197,94,0.35) 0%, rgba(16,185,129,0.25) 100%);
+  border-color: rgba(134,239,172,0.45);
+}
+
+.basic-stats-grid {
+  margin-top: 0.75rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.mini-stat {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 0.45rem 0.55rem;
+}
+
+.mini-label {
+  display: block;
+  color: #94a3b8;
+  font-size: 0.67rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.mini-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.streak-history {
+  margin-top: 0.75rem;
+}
+
+.streak-history-grid {
+  margin-top: 0.45rem;
+  height: 90px;
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 0.3rem;
+  align-items: end;
+}
+
+.streak-day {
+  display: grid;
+  gap: 0.2rem;
+  justify-items: center;
+}
+
+.streak-day span {
+  font-size: 0.6rem;
+  color: #94a3b8;
+}
+
+.streak-bar {
+  width: 100%;
+  min-height: 16%;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.14);
+}
+
+.streak-bar.active {
+  background: linear-gradient(180deg, #4ade80 0%, #22c55e 100%);
+}
+
+.history-panel {
+  margin-top: 0.7rem;
+}
+
+.history-empty {
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.history-list {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.history-item {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 0.45rem 0.55rem;
+}
+
+.history-type {
+  text-transform: capitalize;
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+.history-type.focus {
+  background: rgba(34,197,94,0.2);
+  color: #86efac;
+}
+
+.history-type.break {
+  background: rgba(56,189,248,0.2);
+  color: #7dd3fc;
+}
+
+.history-duration {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.history-time {
+  justify-self: end;
+  color: #94a3b8;
+  font-size: 0.73rem;
 }
 
 .hint { margin-top: 0.85rem; color: #64748b; font-size: 0.8rem; text-align: center; }
