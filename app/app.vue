@@ -775,6 +775,18 @@ onBeforeUnmount(() => {
           <div class="mobile-timer-party" aria-hidden="true">
             <div class="timer-ring-wrap">
               <svg class="timer-ring" viewBox="0 0 120 120">
+                <defs>
+                  <linearGradient id="timerRingTrack" x1="15%" y1="10%" x2="85%" y2="90%">
+                    <stop offset="0%" stop-color="#fff0db" />
+                    <stop offset="100%" stop-color="#f5ad95" />
+                  </linearGradient>
+                  <linearGradient id="timerRingSunset" x1="10%" y1="0%" x2="95%" y2="95%">
+                    <stop offset="0%" stop-color="#ff6b6b" />
+                    <stop offset="40%" stop-color="#ff8fa3" />
+                    <stop offset="72%" stop-color="#f4a261" />
+                    <stop offset="100%" stop-color="#ffd93d" />
+                  </linearGradient>
+                </defs>
                 <circle class="timer-ring-bg" cx="60" cy="60" r="45" />
                 <circle class="timer-ring-fill" cx="60" cy="60" r="45" />
               </svg>
@@ -1296,19 +1308,24 @@ h1 {
   margin-top: 10px;
   height: 16px;
   overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 232, 205, 0.92) 0%, rgba(246, 192, 156, 0.92) 100%);
 }
 
 .timer-fill,
 .progress-fill {
   height: 100%;
-  background: repeating-linear-gradient(90deg, var(--gold) 0 8px, #ff8fa3 8px 16px);
+  background: linear-gradient(90deg, #ff6b6b 0%, #ff8fa3 38%, #f4a261 72%, #ffd93d 100%);
   position: relative;
   overflow: hidden;
+  box-shadow: 0 0 10px rgba(255, 143, 163, 0.42), 0 0 18px rgba(255, 217, 61, 0.24);
 }
 
 .timer-fill {
   width: calc(var(--timer-progress) * 1%);
-  box-shadow: 0 0 8px rgba(255, 217, 61, 0.55);
+}
+
+.timer-shell.running .timer-fill {
+  animation: fill-reward 1.9s ease-in-out infinite;
 }
 
 .timer-fill::after,
@@ -1320,6 +1337,15 @@ h1 {
   width: 30%;
   background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.68) 50%, transparent 100%);
   animation: shine 2.6s steps(20) infinite;
+}
+
+.timer-fill::before,
+.progress-fill::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0) 60%);
+  pointer-events: none;
 }
 
 .inputs,
@@ -2041,6 +2067,16 @@ select {
   100% { transform: translateX(420%); }
 }
 
+@keyframes fill-reward {
+  0%, 100% { box-shadow: 0 0 10px rgba(255, 143, 163, 0.42), 0 0 18px rgba(255, 217, 61, 0.24); }
+  50% { box-shadow: 0 0 14px rgba(255, 143, 163, 0.58), 0 0 24px rgba(255, 217, 61, 0.38); }
+}
+
+@keyframes ring-glow {
+  0%, 100% { filter: drop-shadow(0 0 8px rgba(255, 143, 163, 0.5)) drop-shadow(0 0 14px rgba(255, 217, 61, 0.34)); }
+  50% { filter: drop-shadow(0 0 12px rgba(255, 143, 163, 0.7)) drop-shadow(0 0 20px rgba(255, 217, 61, 0.48)); }
+}
+
 @keyframes timer-flash {
   0% { opacity: 0.95; background: rgba(255, 255, 224, 0.7); }
   100% { opacity: 0; background: rgba(255, 255, 224, 0); }
@@ -2215,26 +2251,28 @@ select {
     width: 100%;
     height: 100%;
     transform: rotate(-90deg);
-    filter: drop-shadow(0 0 6px rgba(255, 217, 61, 0.45));
+    filter: drop-shadow(0 0 7px rgba(255, 143, 163, 0.32));
   }
 
   .timer-ring-bg,
   .timer-ring-fill {
     fill: none;
-    stroke-width: 7;
+    stroke-width: 8;
     stroke-linecap: round;
   }
 
   .timer-ring-bg {
-    stroke: rgba(45, 42, 74, 0.24);
+    stroke: url(#timerRingTrack);
+    opacity: 0.9;
   }
 
   .timer-ring-fill {
-    stroke: #ffd93d;
+    stroke: url(#timerRingSunset);
     stroke-dasharray: 283;
     stroke-dashoffset: calc(283 - (283 * var(--timer-progress) / 100));
-    transition: stroke-dashoffset 0.5s linear;
-    filter: drop-shadow(0 0 5px rgba(255, 217, 61, 0.85));
+    transition: stroke-dashoffset 0.5s linear, filter 0.3s ease;
+    filter: drop-shadow(0 0 8px rgba(255, 143, 163, 0.56)) drop-shadow(0 0 12px rgba(255, 217, 61, 0.4));
+    animation: ring-glow 2.2s ease-in-out infinite;
   }
 }
 </style>
