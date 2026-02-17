@@ -322,7 +322,12 @@ async function processOAuthRedirect() {
   }
 }
 
-async function signInWithGoogle() {
+async function signInWithGoogle() { // OAuth disabled - app works with localStorage instead
+  console.log("[focus-garden] Login coming soon - localStorage works for now")
+  return
+}
+
+async function _oldSignInWithGoogle() {
   if (!supabaseEnabled || !supabaseAuth || typeof window === 'undefined') return
   try {
     console.log('[focus-garden] Starting Google OAuth...')
