@@ -150,7 +150,7 @@ const supabaseClient = createSupabaseClient(supabaseUrl, supabaseToken)
 const supabaseEnabled = supabaseClient.enabled
 
 // Supabase Auth
-const supabaseAuthUrl = supabaseUrl
+const supabaseAuthUrl = supabaseUrl + '/auth/v1'
 const supabaseAnonKey = supabaseToken
 const supabaseAuth = new GoTrueClient({
   url: supabaseAuthUrl,
