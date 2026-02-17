@@ -182,8 +182,37 @@ async function processOAuthRedirect() {
   if (typeof window === 'undefined' || !supabaseAuth) return
 
   const queryParams = new URLSearchParams(window.location.search)
-  const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash
-  const hashParams = new URLSearchParams(hash)
+  const rawHash = window.location.hash || ''
+  const hash = rawHash.startsWith('#') ? rawHash.slice(1) : rawHash
+
+  // OAuth providers normally return tokens in the hash fragment, but some router setups
+  // rewrite this into "#/path?access_token=..." or leave a full URL-ish fragment.
+  const hashCandidates = [
+    hash,
+    hash.startsWith('/') ? hash.slice(1) : hash,
+    hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : '',
+    hash.includes('#') ? hash.slice(hash.lastIndexOf('#') + 1) : '',
+    (window.location.href.split('#')[1] || ''),
+  ].filter(Boolean)
+
+  const hashParams = hashCandidates.reduce((result, candidate) => {
+    const params = new URLSearchParams(candidate)
+    for (const [key, value] of params.entries()) {
+      if (!result.has(key) && value) {
+        result.set(key, value)
+      }
+    }
+    return result
+  }, new URLSearchParams())
+
+  console.log('[focus-garden] OAuth redirect debug:', {
+    href: window.location.href,
+    rawHash,
+    hashCandidates,
+    parsedHashKeys: Array.from(hashParams.keys()),
+    queryKeys: Array.from(queryParams.keys()),
+  })
+
   const authError = hashParams.get('error_description')
     || hashParams.get('error')
     || queryParams.get('error_description')
@@ -196,7 +225,16 @@ async function processOAuthRedirect() {
 
   const accessToken = hashParams.get('access_token')
   const refreshToken = hashParams.get('refresh_token')
-  if (!accessToken || !refreshToken) return
+  console.log('[focus-garden] OAuth token presence:', {
+    hasAccessToken: Boolean(accessToken),
+    hasRefreshToken: Boolean(refreshToken),
+    accessTokenLength: accessToken?.length ?? 0,
+    refreshTokenLength: refreshToken?.length ?? 0,
+  })
+  if (!accessToken || !refreshToken) {
+    console.warn('[focus-garden] No OAuth hash tokens found to process')
+    return
+  }
 
   const { error } = await supabaseAuth.auth.setSession({
     access_token: accessToken,
