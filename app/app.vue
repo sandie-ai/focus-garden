@@ -162,15 +162,23 @@ const userId = ref<string | null>(null)
 async function signInWithGoogle() {
   if (!supabaseEnabled) return
   try {
-    const { error } = await supabaseAuth.signInWithOAuth({
+    console.log('[focus-garden] Starting Google OAuth...')
+    const { data, error } = await supabaseAuth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: window.location.origin + '/',
+        skipBrowserRedirect: false,
       }
     })
-    if (error) console.warn('[focus-garden] Google sign in failed:', error.message)
+    if (error) {
+      console.error('[focus-garden] Google sign in failed:', error)
+      alert('Login failed: ' + error.message)
+    } else {
+      console.log('[focus-garden] OAuth initiated, data:', data)
+    }
   } catch (e) {
-    console.warn('[focus-garden] Google sign in error:', e)
+    console.error('[focus-garden] Google sign in error:', e)
+    alert('Login error: ' + e)
   }
 }
 
@@ -182,14 +190,23 @@ async function signOut() {
 }
 
 async function initAuth() {
-  if (!supabaseEnabled) return
+  if (!supabaseEnabled) {
+    console.log('[focus-garden] Supabase not enabled, skipping auth init')
+    return
+  }
+  console.log('[focus-garden] Initializing auth...')
+  
   const { data: { session } } = await supabaseAuth.getSession()
   if (session?.user) {
+    console.log('[focus-garden] Found existing session for:', session.user.email)
     currentUser.value = session.user
     userId.value = session.user.id
+  } else {
+    console.log('[focus-garden] No existing session')
   }
   
   supabaseAuth.onAuthStateChange((_event, session) => {
+    console.log('[focus-garden] Auth state changed:', _event, session?.user?.email)
     currentUser.value = session?.user || null
     userId.value = session?.user?.id || null
   })
