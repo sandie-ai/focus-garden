@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { createClient } from '@supabase/supabase-js'
+import { GoTrueClient } from '@supabase/auth-js'
 
 type Mode = 'focus' | 'break'
 type ActivityTab = 'stats' | 'history'
@@ -152,8 +152,16 @@ const supabaseEnabled = supabaseClient.enabled
 // Supabase Auth
 const supabaseAuthUrl = supabaseUrl
 const supabaseAnonKey = supabaseToken
-const supabaseAuth = createClient(supabaseAuthUrl, supabaseAnonKey, {
-  auth: { persistSession: true, autoRefreshToken: true }
+const supabaseAuth = new GoTrueClient({
+  url: supabaseAuthUrl,
+  headers: {
+    Authorization: `Bearer ${supabaseAnonKey}`,
+    apikey: supabaseAnonKey,
+  },
+  storageKey: 'focus-garden-auth',
+  autoRefreshToken: true,
+  persistSession: true,
+  detectSessionInUrl: true,
 })
 
 const currentUser = ref<any>(null)
