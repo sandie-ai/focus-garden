@@ -322,38 +322,13 @@ async function processOAuthRedirect() {
   }
 }
 
-async function signInWithGoogle() { // OAuth disabled - app works with localStorage instead
-  console.log("[focus-garden] Login coming soon - localStorage works for now")
+async function signInWithGoogle() {
+  // OAuth disabled - app works with localStorage
   return
 }
 
-async function _oldSignInWithGoogle() {
-  if (!supabaseEnabled || !supabaseAuth || typeof window === 'undefined') return
-  try {
-    console.log('[focus-garden] Starting Google OAuth...')
-    const { data, error } = await supabaseAuth.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}${window.location.pathname}`,
-      },
-    })
-    if (error) {
-      console.error('[focus-garden] Google sign in failed:', error)
-      alert('Login failed: ' + error.message)
-    } else {
-      console.log('[focus-garden] OAuth initiated, data:', data)
-    }
-  } catch (e) {
-    console.error('[focus-garden] Google sign in error:', e)
-    alert('Login error: ' + e)
-  }
-}
-
 async function signOut() {
-  if (!supabaseEnabled || !supabaseAuth) return
-  await supabaseAuth.auth.signOut()
-  currentUser.value = null
-  userId.value = null
+  // OAuth disabled - localStorage works
 }
 
 async function initAuth() {
@@ -1119,9 +1094,7 @@ onBeforeUnmount(() => {
           <button class="pixel-btn small" @click="signOut">LOGOUT</button>
         </template>
         <template v-else>
-          <button v-if="supabaseEnabled" class="pixel-btn small primary" @click="signInWithGoogle">
-            🔐 LOGIN
-          </button>
+          <span class="user-email" style="font-size: 11px; opacity: 0.7;">✨ Local</span>
         </template>
       </div>
     </header>
