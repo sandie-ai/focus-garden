@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { GoTrueClient } from '@supabase/auth-js'
-import type { Subscription } from '@supabase/auth-js'
+import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js'
 
 type Mode = 'focus' | 'break'
 type ActivityTab = 'stats' | 'history'
@@ -39,9 +38,9 @@ const USER_KEY = 'focus-garden:user-id'
 
 const config = useRuntimeConfig()
 const supabaseUrl = String(config.public.supabaseUrl || '').replace(/\/+$/, '')
-const supabaseToken = String(config.public.supabaseToken || '').trim()
+const supabaseKey = String(config.public.supabaseKey || '').trim()
 
-function createSupabaseClient(baseUrl: string, token: string) {
+function createSupabaseRestClient(baseUrl: string, token: string) {
   const normalizedBaseUrl = String(baseUrl || '').replace(/\/+$/, '')
   const normalizedToken = String(token || '').trim()
   const enabled = Boolean(normalizedBaseUrl && normalizedToken)
@@ -147,26 +146,23 @@ function createSupabaseClient(baseUrl: string, token: string) {
   }
 }
 
-const supabaseClient = createSupabaseClient(supabaseUrl, supabaseToken)
-const supabaseEnabled = supabaseClient.enabled
+const restClient = createSupabaseRestClient(supabaseUrl, supabaseKey)
+const supabaseEnabled = restClient.enabled
+const supabaseAuth: SupabaseClient | null = supabaseEnabled
+  ? createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        flowType: 'pkce',
+        detectSessionInUrl: true,
+        persistSession: true,
+        autoRefreshToken: true,
+        storageKey: 'focus-garden-auth',
+      },
+    })
+  : null
 
-// Supabase Auth
-const supabaseAuthUrl = supabaseUrl + '/auth/v1'
-const supabaseAnonKey = supabaseToken
-const supabaseAuth = new GoTrueClient({
-  url: supabaseAuthUrl,
-  headers: {
-    apikey: supabaseAnonKey,
-  },
-  storageKey: 'focus-garden-auth',
-  autoRefreshToken: true,
-  persistSession: true,
-  detectSessionInUrl: true,
-})
-
-const currentUser = ref<any>(null)
+const currentUser = ref<User | null>(null)
 const userId = ref<string | null>(null)
-let authSubscription: Subscription | null = null
+let authSubscription: { unsubscribe: () => void } | null = null
 
 function cleanupOAuthCallbackUrl() {
   if (typeof window === 'undefined') return
@@ -183,32 +179,20 @@ function cleanupOAuthCallbackUrl() {
 }
 
 async function processOAuthRedirect() {
-  if (typeof window === 'undefined') return
+  if (typeof window === 'undefined' || !supabaseAuth) return
 
-  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
-  const accessToken = hashParams.get('access_token')
-  const refreshToken = hashParams.get('refresh_token')
-
-  if (accessToken && refreshToken) {
-    const { error } = await supabaseAuth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    })
-
-    if (error) {
-      console.error('[focus-garden] Failed to set OAuth session from URL hash:', error)
-    } else {
-      console.log('[focus-garden] OAuth session restored from URL hash')
-      cleanupOAuthCallbackUrl()
-    }
+  const queryParams = new URLSearchParams(window.location.search)
+  const authError = queryParams.get('error_description') || queryParams.get('error')
+  if (authError) {
+    console.error('[focus-garden] OAuth callback returned an error:', authError)
+    cleanupOAuthCallbackUrl()
     return
   }
 
-  const queryParams = new URLSearchParams(window.location.search)
   const authCode = queryParams.get('code')
   if (!authCode) return
 
-  const { error } = await supabaseAuth.exchangeCodeForSession(authCode)
+  const { error } = await supabaseAuth.auth.exchangeCodeForSession(authCode)
   if (error) {
     console.error('[focus-garden] Failed to exchange OAuth code for session:', error)
     return
@@ -219,15 +203,14 @@ async function processOAuthRedirect() {
 }
 
 async function signInWithGoogle() {
-  if (!supabaseEnabled) return
+  if (!supabaseEnabled || !supabaseAuth || typeof window === 'undefined') return
   try {
     console.log('[focus-garden] Starting Google OAuth...')
-    const { data, error } = await supabaseAuth.signInWithOAuth({
+    const { data, error } = await supabaseAuth.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin + '/',
-        skipBrowserRedirect: false,
-      }
+        redirectTo: `${window.location.origin}${window.location.pathname}`,
+      },
     })
     if (error) {
       console.error('[focus-garden] Google sign in failed:', error)
@@ -242,23 +225,22 @@ async function signInWithGoogle() {
 }
 
 async function signOut() {
-  if (!supabaseEnabled) return
-  await supabaseAuth.signOut()
+  if (!supabaseEnabled || !supabaseAuth) return
+  await supabaseAuth.auth.signOut()
   currentUser.value = null
   userId.value = null
 }
 
 async function initAuth() {
-  if (!supabaseEnabled) {
+  if (!supabaseEnabled || !supabaseAuth) {
     console.log('[focus-garden] Supabase not enabled, skipping auth init')
     return
   }
   console.log('[focus-garden] Initializing auth...')
 
-  await supabaseAuth.initialize()
   await processOAuthRedirect()
 
-  const { data: { session }, error } = await supabaseAuth.getSession()
+  const { data: { session }, error } = await supabaseAuth.auth.getSession()
   if (error) {
     console.error('[focus-garden] Could not read auth session:', error)
   }
@@ -272,7 +254,7 @@ async function initAuth() {
   }
 
   authSubscription?.unsubscribe()
-  const { data } = supabaseAuth.onAuthStateChange((_event, session) => {
+  const { data } = supabaseAuth.auth.onAuthStateChange((_event, session) => {
     console.log('[focus-garden] Auth state changed:', _event, session?.user?.email)
     currentUser.value = session?.user || null
     userId.value = session?.user?.id || null
@@ -592,8 +574,8 @@ async function loadFromSupabase() {
 
   try {
     const [gardenRow, historyRows] = await Promise.all([
-      supabaseClient.loadGarden(userId),
-      supabaseClient.loadHistory(userId, 40),
+      restClient.loadGarden(userId),
+      restClient.loadHistory(userId, 40),
     ])
 
     return {
@@ -627,7 +609,7 @@ async function syncGardenToSupabase() {
   const userId = getOrCreateUserId()
 
   try {
-    await supabaseClient.upsertGarden(userId, garden.value)
+    await restClient.upsertGarden(userId, garden.value)
     return true
   } catch (error) {
     console.warn('[focus-garden] Supabase sync failed. localStorage remains source of truth.', error)
@@ -642,7 +624,7 @@ async function syncHistoryEntryToSupabase(entry: HistoryEntry) {
 
   const userId = getOrCreateUserId()
   try {
-    await supabaseClient.insertHistory(userId, entry)
+    await restClient.insertHistory(userId, entry)
   } catch (error) {
     console.warn('[focus-garden] History sync failed. localStorage remains source of truth.', error)
   }
