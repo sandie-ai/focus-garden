@@ -151,7 +151,7 @@ const supabaseEnabled = restClient.enabled
 const supabaseAuth: SupabaseClient | null = supabaseEnabled
   ? createClient(supabaseUrl, supabaseKey, {
       auth: {
-        flowType: 'pkce',
+        flowType: 'implicit',
         detectSessionInUrl: true,
         persistSession: true,
         autoRefreshToken: true,
@@ -182,23 +182,32 @@ async function processOAuthRedirect() {
   if (typeof window === 'undefined' || !supabaseAuth) return
 
   const queryParams = new URLSearchParams(window.location.search)
-  const authError = queryParams.get('error_description') || queryParams.get('error')
+  const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash
+  const hashParams = new URLSearchParams(hash)
+  const authError = hashParams.get('error_description')
+    || hashParams.get('error')
+    || queryParams.get('error_description')
+    || queryParams.get('error')
   if (authError) {
     console.error('[focus-garden] OAuth callback returned an error:', authError)
     cleanupOAuthCallbackUrl()
     return
   }
 
-  const authCode = queryParams.get('code')
-  if (!authCode) return
+  const accessToken = hashParams.get('access_token')
+  const refreshToken = hashParams.get('refresh_token')
+  if (!accessToken || !refreshToken) return
 
-  const { error } = await supabaseAuth.auth.exchangeCodeForSession(authCode)
+  const { error } = await supabaseAuth.auth.setSession({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  })
   if (error) {
-    console.error('[focus-garden] Failed to exchange OAuth code for session:', error)
+    console.error('[focus-garden] Failed to set session from OAuth redirect hash:', error)
     return
   }
 
-  console.log('[focus-garden] OAuth code exchanged for session')
+  console.log('[focus-garden] OAuth hash tokens converted to session')
   cleanupOAuthCallbackUrl()
 }
 
