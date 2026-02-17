@@ -184,6 +184,45 @@ async function processOAuthRedirect() {
   const queryParams = new URLSearchParams(window.location.search)
   const rawHash = window.location.hash || ''
   const hash = rawHash.startsWith('#') ? rawHash.slice(1) : rawHash
+  const knownOAuthKeys = [
+    'access_token',
+    'refresh_token',
+    'token_type',
+    'expires_in',
+    'expires_at',
+    'provider_token',
+    'provider_refresh_token',
+    'state',
+    'code',
+    'error',
+    'error_code',
+    'error_description',
+  ]
+
+  // Fallback parser for malformed fragments where refresh_token can contain
+  // an unencoded "&..." and URLSearchParams truncates it.
+  const extractTokenWithFallback = (candidate: string, key: 'access_token' | 'refresh_token') => {
+    const marker = `${key}=`
+    const markerIndex = candidate.indexOf(marker)
+    if (markerIndex === -1) return ''
+
+    const valueStart = markerIndex + marker.length
+    const tail = candidate.slice(valueStart)
+    const boundaryPattern = new RegExp(`[&#?](?:${knownOAuthKeys.join('|')})=`, 'g')
+    let boundaryIndex = -1
+    let match = boundaryPattern.exec(tail)
+    while (match) {
+      const relativeBoundary = match.index
+      if (relativeBoundary > 0) {
+        boundaryIndex = relativeBoundary
+        break
+      }
+      match = boundaryPattern.exec(tail)
+    }
+
+    const rawValue = boundaryIndex === -1 ? tail : tail.slice(0, boundaryIndex)
+    return rawValue.trim()
+  }
 
   // OAuth providers normally return tokens in the hash fragment, but some router setups
   // rewrite this into "#/path?access_token=..." or leave a full URL-ish fragment.
@@ -225,28 +264,62 @@ async function processOAuthRedirect() {
 
   const accessToken = hashParams.get('access_token')
   const refreshToken = hashParams.get('refresh_token')
+  const rawAccessToken = hashCandidates.map((candidate) => extractTokenWithFallback(candidate, 'access_token')).find(Boolean) || ''
+  const rawRefreshToken = hashCandidates.map((candidate) => extractTokenWithFallback(candidate, 'refresh_token')).find(Boolean) || ''
+  const fallbackAccessToken = rawAccessToken.length > (accessToken?.length ?? 0) ? rawAccessToken : ''
+  const fallbackRefreshToken = rawRefreshToken.length > (refreshToken?.length ?? 0) ? rawRefreshToken : ''
+  const looksLikeTruncatedRefreshToken = Boolean(
+    refreshToken
+      && fallbackRefreshToken
+      && refreshToken.length < 20
+      && hashCandidates.some((candidate) => candidate.includes(`refresh_token=${refreshToken}&`)),
+  )
+  const resolvedRefreshToken = fallbackRefreshToken || refreshToken || ''
+  const resolvedAccessToken = fallbackAccessToken || accessToken || ''
+
+  if (looksLikeTruncatedRefreshToken) {
+    console.warn('[focus-garden] refresh_token may be truncated in OAuth URL fragment; using fallback parser')
+  }
+
   console.log('[focus-garden] OAuth token presence:', {
-    hasAccessToken: Boolean(accessToken),
-    hasRefreshToken: Boolean(refreshToken),
-    accessTokenLength: accessToken?.length ?? 0,
-    refreshTokenLength: refreshToken?.length ?? 0,
+    hasAccessToken: Boolean(resolvedAccessToken),
+    hasRefreshToken: Boolean(resolvedRefreshToken),
+    accessTokenLength: resolvedAccessToken.length,
+    refreshTokenLength: resolvedRefreshToken.length,
+    refreshTokenFromFallback: Boolean(fallbackRefreshToken),
   })
-  if (!accessToken || !refreshToken) {
+  if (!resolvedAccessToken || !resolvedRefreshToken) {
     console.warn('[focus-garden] No OAuth hash tokens found to process')
     return
   }
 
-  const { error } = await supabaseAuth.auth.setSession({
-    access_token: accessToken,
-    refresh_token: refreshToken,
+  console.log('[focus-garden] Calling setSession from OAuth redirect...', {
+    accessTokenLength: resolvedAccessToken.length,
+    refreshTokenLength: resolvedRefreshToken.length,
   })
-  if (error) {
-    console.error('[focus-garden] Failed to set session from OAuth redirect hash:', error)
-    return
-  }
+  try {
+    const { data, error } = await supabaseAuth.auth.setSession({
+      access_token: resolvedAccessToken,
+      refresh_token: resolvedRefreshToken,
+    })
 
-  console.log('[focus-garden] OAuth hash tokens converted to session')
-  cleanupOAuthCallbackUrl()
+    if (error) {
+      console.error('[focus-garden] setSession failed for OAuth redirect:', {
+        error,
+        hasSession: Boolean(data?.session),
+      })
+      return
+    }
+
+    console.log('[focus-garden] setSession succeeded for OAuth redirect:', {
+      hasSession: Boolean(data?.session),
+      userId: data?.session?.user?.id ?? null,
+      expiresAt: data?.session?.expires_at ?? null,
+    })
+    cleanupOAuthCallbackUrl()
+  } catch (error) {
+    console.error('[focus-garden] setSession threw while processing OAuth redirect:', error)
+  }
 }
 
 async function signInWithGoogle() {
