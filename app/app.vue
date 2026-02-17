@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { GoTrueClient } from '@supabase/auth-js'
+import type { Subscription } from '@supabase/auth-js'
 
 type Mode = 'focus' | 'break'
 type ActivityTab = 'stats' | 'history'
@@ -155,7 +156,6 @@ const supabaseAnonKey = supabaseToken
 const supabaseAuth = new GoTrueClient({
   url: supabaseAuthUrl,
   headers: {
-    Authorization: `Bearer ${supabaseAnonKey}`,
     apikey: supabaseAnonKey,
   },
   storageKey: 'focus-garden-auth',
@@ -166,6 +166,57 @@ const supabaseAuth = new GoTrueClient({
 
 const currentUser = ref<any>(null)
 const userId = ref<string | null>(null)
+let authSubscription: Subscription | null = null
+
+function cleanupOAuthCallbackUrl() {
+  if (typeof window === 'undefined') return
+
+  const callbackUrl = new URL(window.location.href)
+  callbackUrl.searchParams.delete('code')
+  callbackUrl.searchParams.delete('state')
+  callbackUrl.searchParams.delete('error')
+  callbackUrl.searchParams.delete('error_code')
+  callbackUrl.searchParams.delete('error_description')
+  callbackUrl.hash = ''
+
+  window.history.replaceState({}, document.title, callbackUrl.toString())
+}
+
+async function processOAuthRedirect() {
+  if (typeof window === 'undefined') return
+
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+  const accessToken = hashParams.get('access_token')
+  const refreshToken = hashParams.get('refresh_token')
+
+  if (accessToken && refreshToken) {
+    const { error } = await supabaseAuth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    })
+
+    if (error) {
+      console.error('[focus-garden] Failed to set OAuth session from URL hash:', error)
+    } else {
+      console.log('[focus-garden] OAuth session restored from URL hash')
+      cleanupOAuthCallbackUrl()
+    }
+    return
+  }
+
+  const queryParams = new URLSearchParams(window.location.search)
+  const authCode = queryParams.get('code')
+  if (!authCode) return
+
+  const { error } = await supabaseAuth.exchangeCodeForSession(authCode)
+  if (error) {
+    console.error('[focus-garden] Failed to exchange OAuth code for session:', error)
+    return
+  }
+
+  console.log('[focus-garden] OAuth code exchanged for session')
+  cleanupOAuthCallbackUrl()
+}
 
 async function signInWithGoogle() {
   if (!supabaseEnabled) return
@@ -203,8 +254,15 @@ async function initAuth() {
     return
   }
   console.log('[focus-garden] Initializing auth...')
-  
-  const { data: { session } } = await supabaseAuth.getSession()
+
+  await supabaseAuth.initialize()
+  await processOAuthRedirect()
+
+  const { data: { session }, error } = await supabaseAuth.getSession()
+  if (error) {
+    console.error('[focus-garden] Could not read auth session:', error)
+  }
+
   if (session?.user) {
     console.log('[focus-garden] Found existing session for:', session.user.email)
     currentUser.value = session.user
@@ -212,12 +270,14 @@ async function initAuth() {
   } else {
     console.log('[focus-garden] No existing session')
   }
-  
-  supabaseAuth.onAuthStateChange((_event, session) => {
+
+  authSubscription?.unsubscribe()
+  const { data } = supabaseAuth.onAuthStateChange((_event, session) => {
     console.log('[focus-garden] Auth state changed:', _event, session?.user?.email)
     currentUser.value = session?.user || null
     userId.value = session?.user?.id || null
   })
+  authSubscription = data.subscription
 }
 
 const syncInProgress = ref(false)
@@ -920,6 +980,8 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  authSubscription?.unsubscribe()
+  authSubscription = null
   stopTimer()
   clearTimerCatDelay()
   if (audioRef.value) {
