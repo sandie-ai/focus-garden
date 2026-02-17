@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { createClient } from '@supabase/supabase-js'
 
 type Mode = 'focus' | 'break'
 type ActivityTab = 'stats' | 'history'
@@ -147,6 +148,53 @@ function createSupabaseClient(baseUrl: string, token: string) {
 
 const supabaseClient = createSupabaseClient(supabaseUrl, supabaseToken)
 const supabaseEnabled = supabaseClient.enabled
+
+// Supabase Auth
+const supabaseAuthUrl = supabaseUrl
+const supabaseAnonKey = supabaseToken
+const supabaseAuth = createClient(supabaseAuthUrl, supabaseAnonKey, {
+  auth: { persistSession: true, autoRefreshToken: true }
+})
+
+const currentUser = ref<any>(null)
+const userId = ref<string | null>(null)
+
+async function signInWithGoogle() {
+  if (!supabaseEnabled) return
+  try {
+    const { error } = await supabaseAuth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+      }
+    })
+    if (error) console.warn('[focus-garden] Google sign in failed:', error.message)
+  } catch (e) {
+    console.warn('[focus-garden] Google sign in error:', e)
+  }
+}
+
+async function signOut() {
+  if (!supabaseEnabled) return
+  await supabaseAuth.signOut()
+  currentUser.value = null
+  userId.value = null
+}
+
+async function initAuth() {
+  if (!supabaseEnabled) return
+  const { data: { session } } = await supabaseAuth.getSession()
+  if (session?.user) {
+    currentUser.value = session.user
+    userId.value = session.user.id
+  }
+  
+  supabaseAuth.onAuthStateChange((_event, session) => {
+    currentUser.value = session?.user || null
+    userId.value = session?.user?.id || null
+  })
+}
+
 const syncInProgress = ref(false)
 
 const focusMinutes = ref(25)
@@ -363,6 +411,9 @@ function createLocalId() {
 }
 
 function getOrCreateUserId() {
+  // If user is authenticated via OAuth, use their ID
+  if (userId.value) return userId.value
+  
   const existing = localStorage.getItem(USER_KEY)
   if (existing) return existing
 
@@ -798,6 +849,7 @@ watch(running, (isRunning) => {
 
 onMounted(async () => {
   getOrCreateUserId()
+  await initAuth()
 
   const raw = localStorage.getItem(STORAGE_KEY)
   if (raw) {
@@ -865,6 +917,18 @@ onBeforeUnmount(() => {
       <div class="status-box" :class="{ running }">
         <span class="status-led" />
         <span>{{ running ? 'session active' : 'waiting at camp' }}</span>
+      </div>
+      <div class="user-area">
+        <template v-if="currentUser">
+          <img v-if="currentUser.user_metadata?.avatar_url" :src="currentUser.user_metadata.avatar_url" class="user-avatar" :alt="currentUser.email">
+          <span class="user-email">{{ currentUser.email }}</span>
+          <button class="pixel-btn small" @click="signOut">LOGOUT</button>
+        </template>
+        <template v-else>
+          <button v-if="supabaseEnabled" class="pixel-btn small primary" @click="signInWithGoogle">
+            🔐 LOGIN
+          </button>
+        </template>
       </div>
     </header>
 
@@ -1295,6 +1359,31 @@ body {
 .status-box.running .status-led {
   background: var(--gold);
   animation: blink 1s steps(2) infinite;
+}
+
+.user-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
+
+.user-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+}
+
+.user-email {
+  font-size: 0.7rem;
+  color: var(--text-light);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .workspace {
